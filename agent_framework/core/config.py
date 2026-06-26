@@ -1,0 +1,52 @@
+"""框架配置管理。
+
+用 ``pydantic-settings`` 从 ``.env`` 自动读取配置,带类型校验与默认值。
+密钥等敏感信息只存在于 ``.env``(在 ``.gitignore`` 中),绝不硬编码进代码。
+详见 stage-1-design.md §5。
+"""
+
+from __future__ import annotations
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    """框架运行配置,从 ``.env`` 读取(环境变量名大小写不敏感)。
+
+    Attributes:
+        provider: LLM 厂商,决定 ``create_llm`` 装配哪个实现。支持 ``claude`` /
+            ``openai``。换厂商只改这一项(+ 对应的 key),核心与 CLI 不动。
+        anthropic_api_key: Anthropic API Key。仅 ``provider=claude`` 时必填;
+            缺失会在构造 ``ClaudeLLM`` 时报错。
+        openai_api_key: OpenAI API Key。仅 ``provider=openai`` 时必填;
+            缺失会在构造 ``OpenAILLM`` 时报错。
+        model: 模型 id,可被 ``.env`` 的 ``MODEL`` 覆盖。留空(None)时由具体
+            provider 用各自默认模型(Claude→opus-4-8,OpenAI→gpt-5.4-mini)。
+        max_tokens: 单次回复的 token 上限。
+        temperature: 通用采样温度字段。注意 Opus 4.8 / GPT‑5 系列实际不下发此参数
+            (见各 provider 实现),保留它供支持的模型使用。
+        stream: CLI 默认是否采用流式输出。
+    """
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    provider: str = "claude"
+    anthropic_api_key: str | None = None
+    openai_api_key: str | None = None
+    model: str | None = None
+    max_tokens: int = 1024
+    temperature: float = 1.0
+    stream: bool = True
+
+
+def get_settings() -> Settings:
+    """读取并返回一份配置实例。
+
+    供 CLI / 实验脚本在启动时调用。所需的 API key 由具体 provider 在构造时校验
+    (缺失则「启动即失败」并给出明确提示),而非跑到一半才发现没配 key。
+    """
+    return Settings()  # type: ignore[call-arg]

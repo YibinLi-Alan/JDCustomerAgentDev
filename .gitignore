@@ -1,0 +1,16 @@
+# macOS
+.DS_Store
+
+# Claude Code 本地设置(机器相关)
+.claude/settings.local.json
+
+# Python(以后写代码会用到)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+*.egg-info/
+
+# Obsidian 个人知识库:整库不上传 GitHub(私人笔记 / 聊天记录 / 决策草稿)
+AgentKnowledge/

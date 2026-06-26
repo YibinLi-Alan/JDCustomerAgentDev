@@ -1,0 +1,8 @@
+# 运行依赖(宽松下限,阶段一暂不锁 lockfile)。
+# anthropic / openai 均为「按需」厂商 SDK:只用其中一家时,另一家可不装
+#(provider 实现里延迟导入)。两个都列出以便开箱即用。
+anthropic>=0.40
+openai>=1.40
+pydantic>=2.0
+pydantic-settings>=2.0
+python-dotenv>=1.0

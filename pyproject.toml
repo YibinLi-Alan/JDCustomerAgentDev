@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-framework"
+version = "0.1.0"
+description = "从零搭建的可复用 Agent 框架(实习项目)。"
+requires-python = ">=3.10"
+authors = [{ name = "YibinLi-Alan", email = "yibinli@alumni.cmu.edu" }]
+dependencies = [
+    "anthropic>=0.40",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "python-dotenv>=1.0",
+]
+
+[tool.setuptools]
+packages = ["agent_framework", "agent_framework.core"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]

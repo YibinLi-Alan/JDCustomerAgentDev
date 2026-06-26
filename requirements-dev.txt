@@ -1,0 +1,4 @@
+# 开发依赖:代码风格与格式化。安装:pip install -r requirements-dev.txt
+-r requirements.txt
+ruff>=0.4
+black>=24.0
