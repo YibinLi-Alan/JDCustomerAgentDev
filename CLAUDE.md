@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A 4–6 week internship project to **build a reusable Agent framework from scratch** that can be used for real business scenarios. The work follows a fixed 6-stage curriculum and culminates in a complete, modular `agent_framework/` package plus a final presentation.
 
-> **The codebase is in the skeleton phase — the `agent_framework/` package directory tree exists (empty dirs), but no module files or tests yet.** Build strictly according to the curriculum below; do not invent structure that contradicts it, and do not narrow the scope to a single hard-coded business script.
+> **Progress: Stage 1 ✅ and Stage 2 ✅ are done (as of 2026-07-01).** Built so far: `core/` (LLM interface + Claude/OpenAI providers + `create_llm` factory + config), the ReAct loop (`core/agent.py`: `ReActAgent` + `parse_step` + `AgentResult` + error recovery), a minimal `Tool` protocol (`tools/base.py`) with JD mock tools (`tools/jd_mock.py`), two CLIs (`examples/chat_cli.py`, `examples/react_cli.py`), and offline tests (`tests/`, MockLLM). Stages 3–6 remain. Build strictly according to the curriculum below; do not invent structure that contradicts it, and do not narrow the scope to a single hard-coded business script.
 
 ### The prime directive: completeness over polish
 
@@ -85,7 +85,15 @@ The same discipline still applies to every subagent: **design doc → review →
 
 ## Commands
 
-Targets **Python 3.10+** (uses `Protocol`, `X | None`). The dev environment is the **conda env `jingdong`** (Python 3.11; the user referred to it as "JD" but the actual env name is `jingdong`). Activate with `conda activate jingdong`. No build/lint/test tooling is configured yet — the outline requires type hints throughout, `ruff`/`black` for style, and unit tests on key paths. The Anthropic API key belongs in `.env` (gitignored), never in code.
+Targets **Python 3.10+** (uses `Protocol`, `X | None`). The dev environment is the **conda env `jingdong`** (Python 3.11; the user referred to it as "JD" but the actual env name is `jingdong`). Activate with `conda activate jingdong`.
+
+Tooling is configured (`pyproject.toml`, line-length 100, target py311). Common commands (run from repo root):
+- Install deps: `pip install -r requirements.txt` (+ `requirements-dev.txt` for ruff/black/pytest)
+- Lint / format: `ruff check .` · `black --check .` (drop `--check` to reformat)
+- Tests (offline, free — use MockLLM, no real API): `python -m pytest tests/ -q` · single test: `python -m pytest tests/test_agent.py::test_name -q`
+- Run demos: `python -m examples.chat_cli` (stage 1) · `python -m examples.react_cli` (stage 2 ReAct)
+
+The LLM provider is chosen in `.env` via `PROVIDER` (`claude` | `openai`); currently the user runs the cheap `gpt-5.4-mini` to save cost. API keys belong in `.env` (gitignored), never in code.
 
 ## Cross-cutting requirements (apply to every stage)
 

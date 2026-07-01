@@ -26,6 +26,8 @@ class Settings(BaseSettings):
         temperature: 通用采样温度字段。注意 Opus 4.8 / GPT‑5 系列实际不下发此参数
             (见各 provider 实现),保留它供支持的模型使用。
         stream: CLI 默认是否采用流式输出。
+        agent_max_steps: ReAct 主循环的最大步数(防死循环);撞上限触发强制作答。
+            可由 ``.env`` 的 ``AGENT_MAX_STEPS`` 覆盖。
     """
 
     model_config = SettingsConfigDict(
@@ -41,6 +43,7 @@ class Settings(BaseSettings):
     max_tokens: int = 1024
     temperature: float = 1.0
     stream: bool = True
+    agent_max_steps: int = 5
 
 
 def get_settings() -> Settings:

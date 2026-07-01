@@ -5,9 +5,9 @@
 > 每个阶段:**先写设计文档 → mentor 评审 → 再编码**。
 
 ## 进度总览
-- [ ] 阶段一 基础认知与环境搭建
-- [ ] 阶段二 最小 Agent 循环(ReAct)
-- [ ] 阶段三 Tool Use 系统
+- [x] 阶段一 基础认知与环境搭建 ✅(2026-06-28)
+- [x] 阶段二 最小 Agent 循环(ReAct)✅(2026-07-01)
+- [ ] 阶段三 Tool Use 系统 ← 下一步
 - [ ] 阶段四 Memory 与上下文管理
 - [ ] 阶段五 Planning 与 Multi-Agent
 - [ ] 阶段六 生产化与业务落地
@@ -18,17 +18,18 @@
 **目标**:吃透 LLM API 调用、Prompt Engineering;搭好开发环境。
 **核心点**:Chat Completion 结构(messages/role/temperature)· 流式输出 · Token 与成本 · System Prompt / Few-shot / CoT / 结构化 JSON 输出 · Python 3.10+ · 依赖管理 · `.env` 管 API Key。
 **交付**
-- [ ] 能多轮对话的 CLI 程序
-- [ ] 实验报告:直接提问 vs CoT vs Few-shot 的输出质量对比
-- [ ] 项目骨架搭好
+- [x] 能多轮对话的 CLI 程序(`examples/chat_cli.py`;并做成可切换 provider:Claude / OpenAI)
+- [x] 实验报告:直接提问 vs CoT vs Few-shot 的输出质量对比(`docs/stage-1-prompt-experiment.md`)
+- [x] 项目骨架搭好(`agent_framework/` + pyproject/ruff/black/.env.example)
 **必读**:OpenAI API Reference · Prompt Engineering Guide · Lilian Weng《Prompt Engineering》
 
 ## 阶段二 · 最小 Agent 循环(第 1 周后半~第 2 周前半,3–4 天)
 **目标**:理解 Agent vs Chatbot;实现最小可运行的 ReAct Loop。
 **核心点**:感知→思考→行动自主循环 · 四要素(LLM/Tools/Memory/Planning)· Thought→Action→Observation · 最大步数防死循环 · 结构化输出解析 · 异常恢复。
 **交付**
-- [ ] `agent_loop.py` 骨架,能自主决定继续行动还是直接回答
-- [ ] 设计文档:Agent Loop 状态机图
+- [x] ReAct Loop(`core/agent.py` 的 `ReActAgent`),能自主决定继续行动还是直接回答
+- [x] 设计文档:Agent Loop 状态机图(`docs/stage-2-design.md` §4)
+- [x] 附加:极简 `Tool` 接口 + JD mock 工具、交互式多轮 CLI(`examples/react_cli.py`)、MockLLM + 14 单测
 **必读**:ReAct 论文(2210.03629)· Lilian Weng《LLM Powered Autonomous Agents》· Simon Willison 极简实现
 
 ## 阶段三 · Tool Use 系统(第 2 周后半~第 3 周前半,4–5 天)
