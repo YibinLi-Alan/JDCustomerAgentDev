@@ -20,18 +20,34 @@ from __future__ import annotations
 
 from agent_framework.tools.base import (
     BaseTool,
+    Permission,
     Tool,
     ToolError,
     ToolResult,
     ToolTimeoutError,
     ToolValidationError,
 )
+from agent_framework.tools.common import (
+    HttpRequestTool,
+    calculator,
+    create_common_tools,
+    current_time,
+)
 from agent_framework.tools.function_tool import FunctionTool, tool
 from agent_framework.tools.jd_mock import (
     JD_MOCK_TOOLS,
+    ApplyRefundTool,
+    CancelOrderTool,
+    CreateTicketTool,
     QueryLogisticsTool,
     QueryOrderTool,
+    QueryProductTool,
+    QueryUserOrdersTool,
+    SearchFAQTool,
+    create_jd_tools,
 )
+from agent_framework.tools.jd_mock_data import DEFAULT_STORE, JDMockStore
+from agent_framework.tools.presets import default_registry
 from agent_framework.tools.registry import (
     ToolRegistrationError,
     ToolRegistry,
@@ -42,19 +58,35 @@ __all__ = [
     # 抽象层
     "Tool",
     "BaseTool",
+    "Permission",
     "ToolResult",
     "FunctionTool",
     "tool",
-    # 注册中心
+    # 注册中心与装配
     "ToolRegistry",
+    "default_registry",
+    "create_jd_tools",
+    "create_common_tools",
     # 错误类型
     "ToolError",
     "ToolValidationError",
     "ToolTimeoutError",
     "ToolRegistrationError",
     "UnknownToolError",
-    # 阶段二 mock 工具
+    # 业务工具(A 组)与数据层
     "QueryOrderTool",
     "QueryLogisticsTool",
+    "QueryProductTool",
+    "SearchFAQTool",
+    "QueryUserOrdersTool",
+    "ApplyRefundTool",
+    "CancelOrderTool",
+    "CreateTicketTool",
+    "JDMockStore",
+    "DEFAULT_STORE",
     "JD_MOCK_TOOLS",
+    # 通用工具(B 组)
+    "calculator",
+    "current_time",
+    "HttpRequestTool",
 ]

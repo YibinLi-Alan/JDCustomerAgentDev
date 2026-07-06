@@ -7,8 +7,8 @@
 ## 进度总览
 - [x] 阶段一 基础认知与环境搭建 ✅(2026-06-28)
 - [x] 阶段二 最小 Agent 循环(ReAct)✅(2026-07-01)
-- [ ] 阶段三 Tool Use 系统 ← 下一步
-- [ ] 阶段四 Memory 与上下文管理
+- [x] 阶段三 Tool Use 系统 ✅(2026-07-06)
+- [ ] 阶段四 Memory 与上下文管理 ← 下一步
 - [ ] 阶段五 Planning 与 Multi-Agent
 - [ ] 阶段六 生产化与业务落地
 
@@ -36,11 +36,11 @@
 **目标**:掌握 Function Calling;设计可扩展 Tool 抽象层。
 **核心点**:Function Calling 协议 · Tool 的 JSON Schema · 并行调用 · `BaseTool` 抽象 · `ToolRegistry` · Pydantic 参数校验 · 超时/异常/结果标准化。
 **交付**
-- [x] `BaseTool` + `ToolRegistry`(P-A:strict mode + 超时 + `ToolResult` 标准化 + `@tool` 装饰器)
-- [ ] ≥5 个可用 Tool(含完整 Schema 与错误处理)← P-C,和导师一起逐个加
-- [ ] Agent 能自主选择并调用 Tool(原生 Function Calling)← P-B
-- [ ] 每个 Tool 的单元测试(正常/异常)(框架层 26 条已过;每工具的随 P-C 加)
-- [x] 设计文档:Tool 系统类图 + 扩展指南(`docs/stage-3-design.md`)
+- [x] `BaseTool` + `ToolRegistry`(P-A:strict mode + 超时 + `ToolResult` 标准化 + `@tool` 装饰器 + permission 权限标记)
+- [x] ≥5 个可用 Tool(P-C:11 个 = 8 业务 + 3 通用,共享 `JDMockStore` 假数据层,`default_registry()` 装配)
+- [x] Agent 能自主选择并调用 Tool(P-B:原生 Function Calling,`ToolCallingAgent` + Claude/OpenAI 双协议适配 + 并行调用;demo:`examples/tools_cli.py`)
+- [x] 每个 Tool 的单元测试(正常/异常)(tests 共 70 条全过)
+- [x] 设计文档:Tool 系统类图 + 扩展指南(`docs/stage-3-design.md`,§8 含评审定稿的七条工具规范)
 **必读**:OpenAI Function Calling Guide · Toolformer · OpenAI Swarm 源码
 
 ## 阶段四 · Memory 与上下文管理(第 3 周后半,3–4 天)

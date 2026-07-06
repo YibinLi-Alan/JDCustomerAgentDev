@@ -23,9 +23,15 @@ from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass, field
-from typing import Protocol, runtime_checkable
+from typing import Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ValidationError
+
+#: 工具的权限级别(阶段六 safety/HITL 依据它决定「直接执行 / 触发人工审批」):
+#: - ``low``:只读查询,Agent 直接执行;
+#: - ``medium``:有外部副作用但可控(如调外部 HTTP);
+#: - ``high``:写操作 / 资金相关(退款、取消订单、建工单),阶段六接人工审批。
+Permission = Literal["low", "medium", "high"]
 
 
 @runtime_checkable
@@ -116,6 +122,8 @@ class BaseTool(ABC):
             ``5``)、拒绝未知参数、导出的 Schema 带 ``additionalProperties: false``。
         timeout: 单次执行的秒数上限;``None`` 不限时。注意 Python 线程无法强杀,
             超时后工作线程可能仍在后台跑完,这里只保证**调用方**及时拿到超时结果。
+        permission: 权限级别元数据(默认 ``"low"``)。本阶段只声明不拦截;
+            阶段六 safety 读它实现分层执行与 HITL 审批,工具本身零改动。
     """
 
     name: str
@@ -123,6 +131,7 @@ class BaseTool(ABC):
     args_schema: type[BaseModel] | None = None
     strict: bool = True
     timeout: float | None = None
+    permission: Permission = "low"
 
     # ------------------------------ 公开入口 ------------------------------ #
     def invoke(self, args: dict[str, object] | None = None) -> ToolResult:

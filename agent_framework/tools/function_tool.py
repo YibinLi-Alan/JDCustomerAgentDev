@@ -22,7 +22,7 @@ from typing import Callable, get_type_hints, overload
 
 from pydantic import BaseModel, create_model
 
-from agent_framework.tools.base import BaseTool
+from agent_framework.tools.base import BaseTool, Permission
 
 
 def _schema_from_signature(func: Callable[..., object], tool_name: str) -> type[BaseModel] | None:
@@ -72,6 +72,7 @@ class FunctionTool(BaseTool):
         description: str | None = None,
         strict: bool = True,
         timeout: float | None = None,
+        permission: Permission = "low",
     ) -> None:
         """包装函数为工具。
 
@@ -81,6 +82,7 @@ class FunctionTool(BaseTool):
             description: 工具说明;默认取函数 docstring。
             strict: strict mode 开关(语义见 :class:`BaseTool`)。
             timeout: 执行超时秒数;``None`` 不限时。
+            permission: 权限级别元数据(见 :class:`BaseTool`),默认 ``"low"``。
 
         Raises:
             ValueError: 既没有 ``description`` 也没有 docstring,或签名无法推断 Schema。
@@ -95,6 +97,7 @@ class FunctionTool(BaseTool):
         self.description = desc.strip()
         self.strict = strict
         self.timeout = timeout
+        self.permission = permission
         self.args_schema = _schema_from_signature(func, self.name)
         self._func = func
 
@@ -112,6 +115,7 @@ def tool(
     description: str | None = ...,
     strict: bool = ...,
     timeout: float | None = ...,
+    permission: Permission = ...,
 ) -> Callable[[Callable[..., object]], FunctionTool]: ...
 
 
@@ -122,6 +126,7 @@ def tool(
     description: str | None = None,
     strict: bool = True,
     timeout: float | None = None,
+    permission: Permission = "low",
 ) -> FunctionTool | Callable[[Callable[..., object]], FunctionTool]:
     """装饰器:把带类型注解 + docstring 的函数变成 :class:`FunctionTool`。
 
@@ -139,12 +144,20 @@ def tool(
         description: 覆盖工具说明(默认 docstring)。
         strict: strict mode 开关,默认开。
         timeout: 执行超时秒数。
+        permission: 权限级别元数据,默认 ``"low"``。
 
     Returns:
         :class:`FunctionTool` 实例,或(带参形式)一个再接收函数的装饰器。
     """
 
     def wrap(f: Callable[..., object]) -> FunctionTool:
-        return FunctionTool(f, name=name, description=description, strict=strict, timeout=timeout)
+        return FunctionTool(
+            f,
+            name=name,
+            description=description,
+            strict=strict,
+            timeout=timeout,
+            permission=permission,
+        )
 
     return wrap(func) if func is not None else wrap
