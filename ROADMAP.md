@@ -36,11 +36,11 @@
 **目标**:掌握 Function Calling;设计可扩展 Tool 抽象层。
 **核心点**:Function Calling 协议 · Tool 的 JSON Schema · 并行调用 · `BaseTool` 抽象 · `ToolRegistry` · Pydantic 参数校验 · 超时/异常/结果标准化。
 **交付**
-- [ ] `BaseTool` + `ToolRegistry`
-- [ ] ≥5 个可用 Tool(含完整 Schema 与错误处理)
-- [ ] Agent 能自主选择并调用 Tool
-- [ ] 每个 Tool 的单元测试(正常/异常)
-- [ ] 设计文档:Tool 系统类图 + 扩展指南
+- [x] `BaseTool` + `ToolRegistry`(P-A:strict mode + 超时 + `ToolResult` 标准化 + `@tool` 装饰器)
+- [ ] ≥5 个可用 Tool(含完整 Schema 与错误处理)← P-C,和导师一起逐个加
+- [ ] Agent 能自主选择并调用 Tool(原生 Function Calling)← P-B
+- [ ] 每个 Tool 的单元测试(正常/异常)(框架层 26 条已过;每工具的随 P-C 加)
+- [x] 设计文档:Tool 系统类图 + 扩展指南(`docs/stage-3-design.md`)
 **必读**:OpenAI Function Calling Guide · Toolformer · OpenAI Swarm 源码
 
 ## 阶段四 · Memory 与上下文管理(第 3 周后半,3–4 天)
