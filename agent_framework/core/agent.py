@@ -1,8 +1,15 @@
-"""阶段二核心:最小 Agent 循环(ReAct)。
+"""Agent 循环内核:文本解析版 ReAct(阶段二)+ 原生 Function Calling 版(阶段三 P-B)。
 
-本模块实现 ``Thought → Action → Observation`` 的自主多步循环内核 :class:`ReActAgent`,
-以及配套的结构化输出模型(:class:`AgentStep` / :class:`AgentAction`)、鲁棒解析函数
-:func:`parse_step` 与带完整轨迹的返回值 :class:`AgentResult`。详见 stage-2-design.md。
+本模块实现两个同构的自主多步循环:
+
+- :class:`ReActAgent`(阶段二):模型输出 JSON **文本**,框架自己解析
+  (``parse_step``)。不依赖厂商的工具调用能力,任何能吐文本的模型都能跑,是兜底方案。
+- :class:`ToolCallingAgent`(阶段三 P-B):走厂商**原生 Function Calling** 协议
+  —— 工具 Schema 通过 ``chat(tools=...)`` 下发,模型返回结构化 ``tool_calls``
+  (支持一步并行多个),无需文本解析,更稳、支持 strict mode。**优先用它。**
+
+两者共享 :class:`AgentResult` / :class:`StepTrace` 轨迹结构。详见
+stage-2-design.md 与 stage-3-design.md。
 
 设计立场:
 
@@ -27,6 +34,7 @@ from agent_framework.core.llm import LLM, Message
 
 if TYPE_CHECKING:
     from agent_framework.tools.base import Tool
+    from agent_framework.tools.registry import ToolRegistry
 
 
 # --------------------------------------------------------------------------- #
@@ -364,3 +372,125 @@ class ReActAgent:
             "观察:运输中,预计明天送达\n"
             '第3步:{"thought":"根据物流进度回答用户","final_answer":"您的订单预计明天送达哦。"}'
         )
+
+
+# --------------------------------------------------------------------------- #
+# 原生 Function Calling 循环(阶段三 P-B)                                        #
+# --------------------------------------------------------------------------- #
+
+#: ToolCallingAgent 的默认 system prompt。工具清单走原生 ``tools=`` 参数下发,
+#: 这里只写角色与行为规则,不再需要 JSON 输出格式约定与 few-shot(协议层保证了结构)。
+DEFAULT_TOOL_CALLING_SYSTEM_PROMPT = (
+    "你是京东客服 Agent。需要订单、物流、商品等数据时,调用合适的工具获取;"
+    "一次可以并行调用多个互不依赖的工具;信息足够后直接给出简洁、友好的中文答复。\n"
+    "规则:\n"
+    "- 优先参考上文对话历史理解用户的指代(如“那个订单 / 它 / 刚才那个”通常指"
+    "之前对话里出现过的订单号、物流单号等)。\n"
+    "- 对话历史里已出现过的信息(订单号、物流单号等)不要再向用户索要,直接拿来用;"
+    "只有历史中确实找不到时,才礼貌地请用户提供。\n"
+    "- 工具返回“未找到 / 执行失败”时,先核对参数再重试或换工具;确实拿不到就如实告知用户。"
+)
+
+
+class ToolCallingAgent:
+    """原生 Function Calling 版的自主循环:模型返回结构化 ``tool_calls``。
+
+    与 :class:`ReActAgent` 的分工(见 stage-3-design.md):本类走厂商原生协议,
+    无文本解析环节(没有 ``StepParseError`` 分支),支持一步并行多个工具调用与
+    strict mode;``ReActAgent`` 保留作为「任何文本模型都能跑」的兜底。
+
+    只依赖 ``LLM`` 接口与鸭子类型的 Registry(需要 ``to_schemas()`` /
+    ``invoke(name, args)`` / ``render_catalog()``),运行时不 import tools 子包。
+    """
+
+    def __init__(
+        self,
+        llm: LLM,
+        registry: ToolRegistry,
+        *,
+        max_steps: int = 5,
+        system_prompt: str | None = None,
+    ) -> None:
+        """构造一个原生 Function Calling Agent。
+
+        Args:
+            llm: 满足 ``LLM`` 接口的实现;其 ``chat(tools=...)`` 需支持工具下发。
+            registry: 工具注册中心;每步把 ``to_schemas()`` 下发给模型,
+                执行统一走 ``invoke()``(未知工具 / 失败都折叠,循环不崩)。
+            max_steps: 最大步数(一步 = 一次模型调用,可含多个并行工具调用);
+                撞上限触发强制作答。默认 5。
+            system_prompt: 自定义 system prompt;留空用默认京东客服提示词
+                (工具清单由协议层下发,无需写进提示词)。
+        """
+        self._llm = llm
+        self._registry = registry
+        self._max_steps = max_steps
+        self._system_prompt = system_prompt or DEFAULT_TOOL_CALLING_SYSTEM_PROMPT
+
+    @property
+    def max_steps(self) -> int:
+        """最大步数(只读)。"""
+        return self._max_steps
+
+    @property
+    def system_prompt(self) -> str:
+        """当前生效的 system prompt(只读)。"""
+        return self._system_prompt
+
+    def run(
+        self,
+        user_input: str,
+        history: list[Message] | None = None,
+    ) -> AgentResult:
+        """围绕一个用户问题跑完整循环,直到模型直接作答或撞上步数上限。
+
+        每步:带工具 Schema 调用模型 → 若返回 ``tool_calls`` 则逐个执行
+        (支持并行调用:一步多个 call),结果以 ``tool`` 消息回传;若无
+        ``tool_calls`` 则 ``content`` 即最终答案。
+
+        Args:
+            user_input: 用户本轮的问题 / 反馈。
+            history: 外层干净对话历史(仅 (问题, 最终答案) 对),可为空。
+
+        Returns:
+            带完整轨迹的 :class:`AgentResult`。
+        """
+        context: list[Message] = list(history or []) + [Message("user", user_input)]
+        steps: list[StepTrace] = []
+        schemas = self._registry.to_schemas()
+
+        for _step_no in range(1, self._max_steps + 1):
+            resp = self._llm.chat(context, system=self._system_prompt, tools=schemas)
+
+            if not resp.tool_calls:
+                # 模型直接作答 → 收尾
+                steps.append(StepTrace(final_answer=resp.content))
+                return AgentResult(
+                    final_answer=resp.content,
+                    steps=steps,
+                    stopped_reason="final_answer",
+                )
+
+            # 模型要求调工具(可能一步多个):先原样记下 assistant 消息,再逐个执行回传
+            context.append(Message("assistant", resp.content, tool_calls=tuple(resp.tool_calls)))
+            for call in resp.tool_calls:
+                observation = self._registry.invoke(call.name, call.args).to_observation()
+                context.append(Message("tool", observation, tool_call_id=call.id))
+                steps.append(
+                    StepTrace(
+                        thought=resp.content or None,
+                        action=AgentAction(tool=call.name, input=call.args),
+                        observation=observation,
+                    )
+                )
+
+        # 撞到步数上限:强制模型用现有信息作答(不再下发工具,杜绝继续调用)
+        context.append(
+            Message(
+                "user",
+                "已达到最大步数,请根据已有的工具结果,直接给出你能给的最好的最终答案,"
+                "不要再调用工具。",
+            )
+        )
+        final = self._llm.chat(context, system=self._system_prompt).content
+        return AgentResult(final_answer=final, steps=steps, stopped_reason="max_steps")

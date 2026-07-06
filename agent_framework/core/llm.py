@@ -2,36 +2,67 @@
 
 本模块只定义框架对「大模型」的**厂商无关**抽象:
 
-- ``Message`` / ``Usage`` / ``ChatResponse``：通用数据结构,不绑定任何厂商。
+- ``Message`` / ``Usage`` / ``ChatResponse`` / ``ToolCall``：通用数据结构,不绑定任何厂商。
 - ``LLM``：所有厂商实现都要满足的 :class:`typing.Protocol` 接口。
 - ``create_llm``：按配置(``settings.provider``)挑选并构造具体实现的工厂。
 
 设计立场(见 stage-1-design.md §4):核心代码只依赖 ``LLM`` 接口与本模块的通用
 类型,**任何厂商 SDK 都不在此出现** —— ``anthropic`` 只在 ``llm_claude.py``、
 ``openai`` 只在 ``llm_openai.py``。换模型 = 换实现(甚至只改 ``.env``),核心不动。
+
+阶段三 P-B 扩展(见 stage-3-design.md):原生 Function Calling。``chat()`` 可传
+``tools=``(厂商无关 Schema,来自 ``ToolRegistry.to_schemas()``),应答里的
+``tool_calls`` 是模型要求的工具调用;``Message`` 相应新增 ``assistant`` 消息携带
+``tool_calls``、``tool`` 角色回传工具结果两种形态。厂商差异(Claude ``tool_use``
+block / OpenAI ``tool_calls``)全部封装在各自实现里。
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Iterator, Literal, Protocol
+from typing import TYPE_CHECKING, Iterator, Literal, Protocol, Sequence
 
 if TYPE_CHECKING:
     from agent_framework.core.config import Settings
 
-Role = Literal["user", "assistant"]
+Role = Literal["user", "assistant", "tool"]
+
+
+@dataclass(frozen=True)
+class ToolCall:
+    """模型发起的一次工具调用请求(厂商无关)。
+
+    Attributes:
+        id: 本次调用的唯一 id(厂商生成);回传结果时用它配对。
+        name: 要调用的工具名。
+        args: 模型生成的参数字典(已从 JSON 解析)。
+    """
+
+    id: str
+    name: str
+    args: dict[str, object]
 
 
 @dataclass(frozen=True)
 class Message:
     """一条对话消息(通用,不绑定任何厂商)。
 
-    仅承载 ``user`` / ``assistant`` 两种角色;system prompt 作为
-    :meth:`LLM.chat` / :meth:`LLM.stream` 的独立参数传入,不放进消息列表。
+    三种形态:
+
+    - ``user``:用户输入,只用 ``content``;
+    - ``assistant``:模型输出;若模型要求调工具,``tool_calls`` 非空
+      (此时 ``content`` 可为空字符串);
+    - ``tool``:一条工具执行结果,``content`` 是 Observation 文本,
+      ``tool_call_id`` 指回对应的 :class:`ToolCall`。
+
+    system prompt 仍作为 :meth:`LLM.chat` / :meth:`LLM.stream` 的独立参数传入,
+    不放进消息列表。
     """
 
     role: Role
     content: str
+    tool_calls: tuple[ToolCall, ...] = ()
+    tool_call_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -55,6 +86,8 @@ class ChatResponse:
     usage: Usage  # token 用量
     model: str  # 实际使用的模型 id
     stop_reason: str | None = None
+    # 模型要求的工具调用(未传 tools 或模型直接作答时为空列表)。
+    tool_calls: list[ToolCall] = field(default_factory=list)
     # 逃生舱:原始 SDK 响应,调试用(不参与 repr)。
     raw: object | None = field(default=None, repr=False)
 
@@ -74,8 +107,16 @@ class LLM(Protocol):
         messages: list[Message],
         *,
         system: str | None = None,
+        tools: Sequence[dict[str, object]] | None = None,
     ) -> ChatResponse:
-        """一次性返回完整应答。"""
+        """一次性返回完整应答。
+
+        Args:
+            messages: 对话消息(可含 ``tool_calls`` / ``tool`` 形态,见 :class:`Message`)。
+            system: system prompt。
+            tools: 厂商无关的工具 Schema 列表(``ToolRegistry.to_schemas()`` 的输出);
+                传入后模型可在应答里返回 ``tool_calls`` 要求调用工具。
+        """
         ...
 
     def stream(
@@ -84,7 +125,11 @@ class LLM(Protocol):
         *,
         system: str | None = None,
     ) -> Iterator[str]:
-        """流式返回文本增量(一段段 yield),用于 CLI 实时打印。"""
+        """流式返回文本增量(一段段 yield),用于 CLI 实时打印。
+
+        流式暂不支持 ``tools``(阶段三约定:工具调用走非流式 ``chat``;
+        流式工具事件留到阶段六生产化再议)。
+        """
         ...
 
 
