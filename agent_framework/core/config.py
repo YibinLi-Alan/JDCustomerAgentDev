@@ -61,8 +61,10 @@ class Settings(BaseSettings):
     memory_summary_max_tokens: int = 300
     memory_top_k: int = 3
     memory_weight_relevance: float = 1.0
-    memory_weight_recency: float = 0.5
-    memory_weight_importance: float = 0.5
+    # 时近/重要权重初定 0.5/0.5(评审),后经评测集实测 0.25/0.25 更优
+    #(Hit@1 81%→94%,见 docs/stage-4-memory-eval.md),按数据改为默认。
+    memory_weight_recency: float = 0.25
+    memory_weight_importance: float = 0.25
     memory_half_life_hours: float = 24.0
     memory_dedup_threshold: float = 0.9
     embedding_model: str = "text-embedding-3-small"

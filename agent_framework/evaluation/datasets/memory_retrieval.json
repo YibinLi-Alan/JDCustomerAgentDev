@@ -1,0 +1,42 @@
+{
+  "description": "阶段四长期记忆检索评测集(手工标注)。memories 是预置记忆(hours_ago 相对评测时刻);queries 每条标注应命中的记忆 id。含时近性陷阱(m01 新地址 vs m02 旧地址)与重要性/干扰项。u2 是隔离性干扰用户。",
+  "now": "2026-07-07T12:00:00",
+  "memories": [
+    {"id": "m01", "user_id": "u1", "text": "用户的常用收货地址在上海市浦东新区张江路 88 号", "importance": 9, "hours_ago": 48},
+    {"id": "m02", "user_id": "u1", "text": "用户的常用收货地址在北京市朝阳区望京西路 5 号", "importance": 9, "hours_ago": 2160},
+    {"id": "m03", "user_id": "u1", "text": "用户对订单 12345 的物流速度不满,曾投诉一次", "importance": 8, "hours_ago": 240},
+    {"id": "m04", "user_id": "u1", "text": "用户偏好使用顺丰快递配送", "importance": 6, "hours_ago": 720},
+    {"id": "m05", "user_id": "u1", "text": "用户是 PLUS 钻石会员,年卡有效期到 2026 年底", "importance": 7, "hours_ago": 1440},
+    {"id": "m06", "user_id": "u1", "text": "用户买过一台机械键盘,咨询过退货流程", "importance": 5, "hours_ago": 168},
+    {"id": "m07", "user_id": "u1", "text": "用户家里有小孩,买玩具时特别关心材质安全", "importance": 6, "hours_ago": 400},
+    {"id": "m08", "user_id": "u1", "text": "用户反馈过蓝牙耳机缺货,希望到货时收到通知", "importance": 6, "hours_ago": 100},
+    {"id": "m09", "user_id": "u1", "text": "客服承诺过给用户补发 20 元优惠券", "importance": 9, "hours_ago": 72},
+    {"id": "m10", "user_id": "u1", "text": "用户习惯晚上 8 点以后收货", "importance": 5, "hours_ago": 500},
+    {"id": "m11", "user_id": "u1", "text": "用户开发票需要公司抬头:云帆科技有限公司", "importance": 7, "hours_ago": 800},
+    {"id": "m12", "user_id": "u1", "text": "用户询问过咖啡机的保修期限", "importance": 4, "hours_ago": 1000},
+    {"id": "d01", "user_id": "u2", "text": "用户的常用收货地址在广州市天河区体育西路 10 号", "importance": 9, "hours_ago": 24},
+    {"id": "d02", "user_id": "u2", "text": "用户偏好使用圆通快递配送", "importance": 6, "hours_ago": 48},
+    {"id": "d03", "user_id": "u2", "text": "用户投诉过冰箱送货慢", "importance": 8, "hours_ago": 96},
+    {"id": "d04", "user_id": "u2", "text": "用户是普通会员", "importance": 5, "hours_ago": 200},
+    {"id": "d05", "user_id": "u2", "text": "用户咨询过洗衣机的安装服务", "importance": 5, "hours_ago": 300},
+    {"id": "d06", "user_id": "u2", "text": "客服承诺过给用户退运费 12 元", "importance": 8, "hours_ago": 150}
+  ],
+  "queries": [
+    {"query": "帮我把新买的东西寄到我常用的地址", "user_id": "u1", "expected": ["m01"]},
+    {"query": "我的收货地址是哪个来着", "user_id": "u1", "expected": ["m01"]},
+    {"query": "上海的地址门牌号是多少", "user_id": "u1", "expected": ["m01"]},
+    {"query": "我之前投诉过什么事", "user_id": "u1", "expected": ["m03"]},
+    {"query": "我喜欢用哪家快递", "user_id": "u1", "expected": ["m04"]},
+    {"query": "顺丰还是京东物流,我平时用哪个", "user_id": "u1", "expected": ["m04"]},
+    {"query": "我的会员等级是什么", "user_id": "u1", "expected": ["m05"]},
+    {"query": "我是不是 PLUS 会员", "user_id": "u1", "expected": ["m05"]},
+    {"query": "键盘退货的事办得怎么样了", "user_id": "u1", "expected": ["m06"]},
+    {"query": "给孩子买玩具要注意什么", "user_id": "u1", "expected": ["m07"]},
+    {"query": "之前缺货的耳机现在有货了吗", "user_id": "u1", "expected": ["m08"]},
+    {"query": "上次说好补给我的优惠券呢", "user_id": "u1", "expected": ["m09"]},
+    {"query": "什么时间段送货比较方便", "user_id": "u1", "expected": ["m10"]},
+    {"query": "开发票用什么抬头", "user_id": "u1", "expected": ["m11"]},
+    {"query": "咖啡机保修多久来着", "user_id": "u1", "expected": ["m12"]},
+    {"query": "我常用的收货地址在哪", "user_id": "u2", "expected": ["d01"]}
+  ]
+}

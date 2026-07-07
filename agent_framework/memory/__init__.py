@@ -7,6 +7,12 @@ P-C:MemoryManager 统一门面。
 from agent_framework.memory.compressor import SummaryCompressor
 from agent_framework.memory.embedder import Embedder, OpenAIEmbedder
 from agent_framework.memory.long_term import LongTermMemory, ScoredMemory, WriteOp
+from agent_framework.memory.manager import (
+    MemoryContext,
+    MemoryManager,
+    TurnReport,
+    create_memory_manager,
+)
 from agent_framework.memory.short_term import (
     HeuristicTokenCounter,
     ShortTermMemory,
@@ -27,6 +33,8 @@ __all__ = [
     "HeuristicTokenCounter",
     "InMemoryVectorStore",
     "LongTermMemory",
+    "MemoryContext",
+    "MemoryManager",
     "MemoryRecord",
     "OpenAIEmbedder",
     "ScoredMemory",
@@ -35,6 +43,8 @@ __all__ = [
     "SummaryCompressor",
     "TokenCounter",
     "Turn",
+    "TurnReport",
     "VectorStore",
     "WriteOp",
+    "create_memory_manager",
 ]

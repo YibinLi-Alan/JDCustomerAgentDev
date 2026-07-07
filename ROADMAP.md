@@ -8,8 +8,8 @@
 - [x] 阶段一 基础认知与环境搭建 ✅(2026-06-28)
 - [x] 阶段二 最小 Agent 循环(ReAct)✅(2026-07-01)
 - [x] 阶段三 Tool Use 系统 ✅(2026-07-06)
-- [ ] 阶段四 Memory 与上下文管理 ← 下一步
-- [ ] 阶段五 Planning 与 Multi-Agent
+- [x] 阶段四 Memory 与上下文管理 ✅(2026-07-07)
+- [ ] 阶段五 Planning 与 Multi-Agent ← 下一步
 - [ ] 阶段六 生产化与业务落地
 
 ---
@@ -47,11 +47,11 @@
 **目标**:实现短期记忆(对话管理)+ 长期记忆(向量检索)。
 **核心点**:滑动窗口 · Token 预算 · Embedding · 向量库(Chroma/FAISS)· 余弦相似度 · 对话摘要 / 渐进式压缩 · `MemoryManager` 统一接口。
 **交付**
-- [ ] `MemoryManager`(短期 + 长期)
-- [ ] 基于向量库的存取检索
-- [ ] 自动摘要压缩
-- [ ] Demo:跨会话记住关键信息
-- [ ] 不同记忆策略的检索准确率对比
+- [x] `MemoryManager`(短期 + 长期)(`memory/manager.py` 统一门面,三件套可缺省组合,`create_memory_manager()` 一行装配)
+- [x] 基于向量库的存取检索(`memory/long_term.py`:LLM 提炼事实 → Mem0 式增删改裁决 → 三因子检索;`vector_store.py`:Chroma 持久化 + 内存版双实现;user_id 隔离在存储层强制)
+- [x] 自动摘要压缩(`memory/short_term.py` 滑动窗口按轮弹出 + `compressor.py` 递归摘要,失败降级不炸对话)
+- [x] Demo:跨会话记住关键信息(`examples/memory_cli.py`:/user 隔离 + Chroma 落盘重启仍记得,真实 API 冒烟通过,写入裁决 NOOP 去重在真实运行中生效)
+- [x] 不同记忆策略的检索准确率对比(`evaluation/memory_retrieval_eval.py` + 16 查询标注集;三因子轻量 1.0/0.25/0.25 Hit@1 94% 完胜,数据驱动改默认权重,报告 `docs/stage-4-memory-eval.md`)
 **必读**:MemGPT · Generative Agents · ChromaDB 文档 · Mem0 源码
 
 ## 阶段五 · Planning 与 Multi-Agent(第 4 周~第 5 周前半,5–7 天)

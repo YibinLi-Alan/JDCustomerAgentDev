@@ -6,6 +6,8 @@
 - 阶段三:Tool Use 系统 —— ``BaseTool``(strict mode)+ ``ToolRegistry`` + ``@tool``
   + 原生 Function Calling(``ToolCallingAgent`` / ``ToolCall``)+ 11 个内置工具
   (``default_registry`` 一行装配)。
+- 阶段四:Memory 与上下文管理 —— ``MemoryManager`` 统一门面(短期滑动窗口 +
+  递归摘要 + 长期三因子检索,``create_memory_manager`` 一行装配)。
 
 上层代码(CLI、示例、未来的业务)应只从这里导入接口与类型,并通过 ``create_llm``
 按配置拿到具体 LLM 实现,不直接 import ``anthropic`` / ``openai``。
@@ -32,6 +34,19 @@ from agent_framework.core.llm import (
 )
 from agent_framework.core.llm_claude import ClaudeLLM
 from agent_framework.core.llm_openai import OpenAILLM
+from agent_framework.memory import (
+    LongTermMemory,
+    MemoryContext,
+    MemoryManager,
+    MemoryRecord,
+    ScoredMemory,
+    ShortTermMemory,
+    SummaryCompressor,
+    Turn,
+    TurnReport,
+    WriteOp,
+    create_memory_manager,
+)
 from agent_framework.tools import (
     JD_MOCK_TOOLS,
     BaseTool,
@@ -76,6 +91,18 @@ __all__ = [
     "QueryOrderTool",
     "QueryLogisticsTool",
     "JD_MOCK_TOOLS",
+    # 阶段四:Memory 与上下文管理
+    "MemoryManager",
+    "MemoryContext",
+    "TurnReport",
+    "ShortTermMemory",
+    "Turn",
+    "SummaryCompressor",
+    "LongTermMemory",
+    "MemoryRecord",
+    "ScoredMemory",
+    "WriteOp",
+    "create_memory_manager",
 ]
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"

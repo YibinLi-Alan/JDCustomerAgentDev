@@ -14,3 +14,6 @@ venv/
 
 # Obsidian 个人知识库:整库不上传 GitHub(私人笔记 / 聊天记录 / 决策草稿)
 AgentKnowledge/
+
+# 阶段四:长期记忆的 Chroma 落盘数据(本地运行时状态,不进仓库)
+data/
