@@ -28,6 +28,17 @@ class Settings(BaseSettings):
         stream: CLI 默认是否采用流式输出。
         agent_max_steps: ReAct 主循环的最大步数(防死循环);撞上限触发强制作答。
             可由 ``.env`` 的 ``AGENT_MAX_STEPS`` 覆盖。
+        memory_window_tokens: 短期记忆滑动窗口的 token 预算(紧凑档,约 5–8 轮,
+            让压缩机制在正常 demo 中真实触发)。
+        memory_summary_max_tokens: 前情提要(递归摘要)的长度上限。
+        memory_top_k: 长期记忆检索返回条数(召回候选为其 4 倍再三因子重排)。
+        memory_weight_relevance: 三因子权重之相关性(主排序)。
+        memory_weight_recency: 三因子权重之时近性(加分项)。
+        memory_weight_importance: 三因子权重之重要性(加分项)。
+        memory_half_life_hours: 时近性的指数衰减半衰期(小时)。
+        memory_dedup_threshold: 写入决策降级时的去重阈值(余弦相似度)。
+        embedding_model: embedding 模型 id(OpenAI)。
+        memory_persist_dir: Chroma 持久化目录(gitignore,跨会话记忆落盘处)。
     """
 
     model_config = SettingsConfigDict(
@@ -44,6 +55,18 @@ class Settings(BaseSettings):
     temperature: float = 1.0
     stream: bool = True
     agent_max_steps: int = 5
+
+    # —— 阶段四 Memory(默认值为评审拍板的「紧凑档」,见 stage-4-design.md §5.2/§7.3)——
+    memory_window_tokens: int = 2000
+    memory_summary_max_tokens: int = 300
+    memory_top_k: int = 3
+    memory_weight_relevance: float = 1.0
+    memory_weight_recency: float = 0.5
+    memory_weight_importance: float = 0.5
+    memory_half_life_hours: float = 24.0
+    memory_dedup_threshold: float = 0.9
+    embedding_model: str = "text-embedding-3-small"
+    memory_persist_dir: str = "data/memory"
 
 
 def get_settings() -> Settings:
