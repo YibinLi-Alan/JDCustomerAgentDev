@@ -6,3 +6,6 @@ openai>=1.40
 pydantic>=2.0
 pydantic-settings>=2.0
 python-dotenv>=1.0
+# 阶段四:长期记忆的持久化向量库(嵌入式,无需单独起服务;chromadb 延迟导入,
+# 不用 Chroma 后端时可不装 —— 单测跑的是 InMemoryVectorStore)
+chromadb>=0.5
