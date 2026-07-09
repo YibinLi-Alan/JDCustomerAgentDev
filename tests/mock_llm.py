@@ -46,6 +46,8 @@ class MockLLM:
             供测试断言「工具 Schema 是否被下发 / 何时不下发」。
         seen_messages: 每次 ``chat`` 收到的消息列表快照(按调用顺序),
             供测试断言上下文的组装(如 tool 消息是否正确回传)。
+        seen_systems: 每次 ``chat`` 收到的 ``system`` 参数(按调用顺序),
+            供测试断言 system prompt 的拼装(如记忆附加段是否到达专员)。
     """
 
     model: str = "mock"
@@ -63,6 +65,7 @@ class MockLLM:
         self._cursor = 0
         self.seen_tools: list[Sequence[dict[str, object]] | None] = []
         self.seen_messages: list[list[Message]] = []
+        self.seen_systems: list[str | None] = []
 
     @property
     def call_count(self) -> int:
@@ -96,6 +99,7 @@ class MockLLM:
         )
         self.seen_tools.append(tools)
         self.seen_messages.append(list(messages))
+        self.seen_systems.append(system)
         item = self._responses[self._cursor]
         self._cursor += 1
         if isinstance(item, ChatResponse):
