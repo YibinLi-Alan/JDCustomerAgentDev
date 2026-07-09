@@ -84,6 +84,23 @@ class ToolRegistry:
             raise UnknownToolError(f"工具 {name!r} 不存在。可用工具:{self.names}")
         return tool
 
+    def subset(self, *names: str) -> ToolRegistry:
+        """按名字挑选工具,组成新的 Registry(阶段五:给专员配工具子集)。
+
+        工具**实例共享**不复制——业务工具背后是同一个 ``JDMockStore``,
+        跨专员的状态变化(如售后专员退了款)对其他专员的查询可见。
+
+        Args:
+            names: 要挑选的工具名(按给定顺序装配)。
+
+        Returns:
+            只含指定工具的新 :class:`ToolRegistry`。
+
+        Raises:
+            UnknownToolError: 任一名字未注册(装配期即失败,不留到运行时)。
+        """
+        return ToolRegistry([self.get(name) for name in names])
+
     @property
     def names(self) -> list[str]:
         """已注册的工具名列表(按注册顺序)。"""

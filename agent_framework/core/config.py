@@ -39,6 +39,10 @@ class Settings(BaseSettings):
         memory_dedup_threshold: 写入决策降级时的去重阈值(余弦相似度)。
         embedding_model: embedding 模型 id(OpenAI)。
         memory_persist_dir: Chroma 持久化目录(gitignore,跨会话记忆落盘处)。
+        planner_max_steps: 计划长度上限(prompt 约束 + 超长硬截断)。
+        max_replans: 单轮执行的动态重规划次数上限(防兜圈)。
+        critic_max_retries: Critic 审查不合格时的回炉次数上限。
+        supervisor_specialist_max_steps: Supervisor 派工时,专员内环的步数上限。
     """
 
     model_config = SettingsConfigDict(
@@ -62,13 +66,19 @@ class Settings(BaseSettings):
     memory_top_k: int = 3
     memory_weight_relevance: float = 1.0
     # 时近/重要权重初定 0.5/0.5(评审),后经评测集实测 0.25/0.25 更优
-    #(Hit@1 81%→94%,见 docs/stage-4-memory-eval.md),按数据改为默认。
+    # (Hit@1 81%→94%,见 docs/stage-4-memory-eval.md),按数据改为默认。
     memory_weight_recency: float = 0.25
     memory_weight_importance: float = 0.25
     memory_half_life_hours: float = 24.0
     memory_dedup_threshold: float = 0.9
     embedding_model: str = "text-embedding-3-small"
     memory_persist_dir: str = "data/memory"
+
+    # —— 阶段五 Planning 与 Multi-Agent(循环护栏总表见 stage-5-design.md 附录 B)——
+    planner_max_steps: int = 6
+    max_replans: int = 1
+    critic_max_retries: int = 1
+    supervisor_specialist_max_steps: int = 5
 
 
 def get_settings() -> Settings:
