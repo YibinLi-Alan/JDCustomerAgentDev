@@ -9,8 +9,8 @@
 - [x] 阶段二 最小 Agent 循环(ReAct)✅(2026-07-01)
 - [x] 阶段三 Tool Use 系统 ✅(2026-07-06)
 - [x] 阶段四 Memory 与上下文管理 ✅(2026-07-07)
-- [ ] 阶段五 Planning 与 Multi-Agent ← 下一步
-- [ ] 阶段六 生产化与业务落地
+- [x] 阶段五 Planning 与 Multi-Agent ✅(2026-07-09)
+- [ ] 阶段六 生产化与业务落地 ← 下一步
 
 ---
 
@@ -58,12 +58,14 @@
 **目标**:任务分解与规划;实现多 Agent 协作。
 **核心点**:Plan-and-Execute · 动态重规划 · DAG/层次分解 · Router/Supervisor/Hierarchical/Collaborative 架构 · Agent 间通信 · Reflection/Critic 自我纠错 · 串行/并行/条件/循环工作流。
 **交付**
-- [ ] Planning Agent(复杂任务拆子步骤)
-- [ ] ≥2 种 Multi-Agent 架构(如 Router + Supervisor)
-- [ ] 3 个专业 Agent(Coder / Researcher / Writer)
-- [ ] Demo:多 Agent 协作完成复杂场景(如调研竞品出报告)
-- [ ] 架构设计文档
+- [x] Planning Agent(复杂任务拆子步骤)✅(2026-07-09:`planning/` —— Planner 线性计划 + 越界矫正/降级单步;PlanExecutor 顺序派工 + ScratchPad 黑板 + 动态重规划 ≤1 次)
+- [x] ≥2 种 Multi-Agent 架构(Router + Supervisor)✅(2026-07-09:`multi_agent/router.py` 分诊直派(降级 supervisor)+ `supervisor.py` 中心调度(按计划派工,LLM 自由度收敛在 plan/replan))
+- [x] 3 个专业 Agent ✅(2026-07-09:按业务域切 —— 订单物流/售后/商品导购专员,工具子集经 `registry.subset()`,定义一次两种编排复用;评审拍板替代大纲原例 Coder/Researcher/Writer)
+- [x] Agent 间通信协议和上下文管理 ✅(`protocol.py`:Specialist/TaskAssignment/TaskOutcome + 「无法完成:」失败前缀约定;隔离内环 + ScratchPad 共享黑板 + 记忆注入全员)
+- [x] Demo:多 Agent 协作完成复杂场景 ✅(2026-07-09:`examples/multi_agent_cli.py` 复合客诉一条龙 —— 查证→退款被 7 天规则拦→重规划建工单转人工→推荐→Critic 回炉;真实 API 冒烟通过)
+- [x] 架构设计文档 ✅(`docs/stage-5-design.md`,含架构图/借鉴对照/循环护栏/评审附录)
 **必读**:HuggingGPT · MetaGPT · AutoGen · Reflexion · LangGraph 源码
+**加练**:Critic 终稿质检(大纲 5.3,不合格回炉 ≤1 次,解析失败降级放行);`apply_refund` 补 7 天无理由时效规则(重规划演示的真实触发点)
 
 ## 阶段六 · 生产化与业务落地(第 5 周后半~第 6 周,5–7 天)
 **目标**:工程化 + 评估体系 + 可部署服务。

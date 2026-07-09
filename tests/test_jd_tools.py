@@ -108,6 +108,14 @@ def test_apply_refund_edge_cases(store):
     assert store.refunds == []  # 两次都没落库
 
 
+def test_apply_refund_rejects_beyond_7_day_window(store):
+    # 订单 11111 签收于 2026-06-18(mock 固定日期,永远早于「今天」)→ 超 7 天无理由期
+    result = ApplyRefundTool(store).invoke({"order_id": "11111", "reason": "不想要了"})
+    assert result.ok and "超出 7 天无理由退货期" in result.content
+    assert "create_ticket" in result.content  # 引导转人工售后(阶段五重规划演示的触发点)
+    assert store.refunds == []
+
+
 def test_cancel_order_state_machine(store):
     tool = CancelOrderTool(store)
     # 待发货 → 可取消,且状态真的变了(跨工具可见)

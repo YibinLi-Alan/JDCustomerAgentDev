@@ -109,14 +109,19 @@ class Specialist:
         *,
         extra_system: str = "",
         max_steps: int = 5,
+        history: list | None = None,
     ) -> TaskOutcome:
         """执行一次任务派发,回报 :class:`TaskOutcome`。
 
         ``ok`` 判定(协议约定):撞步数上限(``stopped_reason == "max_steps"``)
         或答复以 :data:`FAILURE_MARKER` 开头 → False;其余 True。
+
+        Args:
+            history: 外层干净对话历史(Router 直派时传入,供跨轮指代;
+                Supervisor 派工不传——步骤任务自带 ScratchPad 上下文)。
         """
         agent = self.build(llm, extra_system=extra_system, max_steps=max_steps)
-        result = agent.run(assignment.to_user_input())
+        result = agent.run(assignment.to_user_input(), history=history)
         failed = result.stopped_reason == "max_steps" or result.final_answer.strip().startswith(
             FAILURE_MARKER
         )

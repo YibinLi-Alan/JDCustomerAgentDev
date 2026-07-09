@@ -139,11 +139,21 @@ class StepResult:
     ok: bool                 # 专员明示失败/异常 = False
     trace: AgentResult | None
 
+class StepRunner(Protocol):   # 编码期定稿:executor 依赖此协议而非 Specialist
+    def run_step(self, step: PlanStep, context: str) -> StepResult: ...
+
 class PlanExecutor:
-    def __init__(self, specialists: Mapping[str, Specialist], *,
-                 replanner: Planner | None = None, max_replans: int = 1): ...
-    def execute(self, plan: Plan, *, shared_notes: ScratchPad) -> list[StepResult]: ...
+    def __init__(self, runner: StepRunner, *, replanner: Planner | None = None,
+                 roster: str = "", specialists: tuple[str, ...] = (),
+                 max_replans: int = 1): ...
+    def execute(self, plan: Plan, *, notes: ScratchPad | None = None)
+        -> ExecutionResult: ...  # results + replanned + 最终计划
 ```
+
+> 编码期修订(架构决策):executor 不直接持有 ``Specialist`` 映射,改依赖
+> ``StepRunner`` 协议,由 Supervisor 提供适配器 —— 保证 **planning 不 import
+> multi_agent** 的依赖方向纪律;返回值升级为 ``ExecutionResult``
+> (Supervisor 需要 ``replanned`` 标志)。
 
 - 顺序执行;每步把 `ScratchPad`(§8)渲染进专员任务,专员产出回填 ScratchPad——
   这就是步骤间传递中间结果的通道(订单专员查到的单号,售后专员下一步能看见);

@@ -18,6 +18,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 from pydantic import BaseModel, Field
 
 from agent_framework.tools.base import BaseTool
@@ -182,8 +184,9 @@ class ApplyRefundTool(_JDTool):
     name = "apply_refund"
     description = (
         "提交退款申请。何时用:用户明确要求退款/退货,且已确认订单号与理由时;"
-        "未发货的订单应改用 cancel_order。参数:order_id(订单号)、reason(退款理由)。"
-        "返回:退款受理单号与后续流程说明。"
+        "未发货的订单应改用 cancel_order;已签收超过 7 天的订单不支持无理由退款"
+        "(如有质量问题请改用 create_ticket 转人工售后)。"
+        "参数:order_id(订单号)、reason(退款理由)。返回:退款受理单号与后续流程说明。"
     )
     args_schema = ApplyRefundArgs
     permission = "high"
@@ -196,6 +199,14 @@ class ApplyRefundTool(_JDTool):
             return f"订单 {order_id} 已是取消状态,无需退款。"
         if order.status == "待发货":
             return f"订单 {order_id} 尚未发货,建议直接取消订单(cancel_order),退款更快。"
+        if order.status == "已签收" and order.signed_at:
+            days = (date.today() - date.fromisoformat(order.signed_at)).days
+            if days > 7:
+                return (
+                    f"无法办理无理由退款:订单 {order_id} 已于 {order.signed_at} 签收,"
+                    f"距今 {days} 天,超出 7 天无理由退货期(签收次日起算)。"
+                    "如商品存在质量问题,可创建人工工单(create_ticket)申请质量售后。"
+                )
         refund_id = self._store.next_refund_id()
         self._store.refunds.append(
             {"refund_id": refund_id, "order_id": order_id, "reason": reason, "status": "待人工审核"}

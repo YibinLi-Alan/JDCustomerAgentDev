@@ -29,6 +29,7 @@ class Order:
     placed_at: str
     carrier: str | None = None  # 已发货后才有
     tracking_no: str | None = None
+    signed_at: str | None = None  # 已签收后才有(ISO 日期;7 天无理由退货期从它起算)
 
 
 @dataclass
@@ -86,6 +87,9 @@ class JDMockStore:
                     placed_at="2026-06-15",
                     carrier="京东物流",
                     tracking_no="JD456",
+                    # 早已签收:必然超出 7 天无理由期 —— 阶段五「退款失败→重规划/转人工」
+                    # 演示的天然触发单(与物流 JD456 的签收记录一致)
+                    signed_at="2026-06-18",
                 ),
             )
         }
