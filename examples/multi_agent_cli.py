@@ -38,9 +38,17 @@ from agent_framework import (
     default_registry,
     get_settings,
 )
+from agent_framework.core.llm import Message
 from agent_framework.multi_agent.protocol import FAILURE_MARKER
-from agent_framework.multi_agent.router import SUPERVISOR_TARGET
+from agent_framework.multi_agent.router import DIRECT_TARGET, SUPERVISOR_TARGET
 from agent_framework.planning import Planner
+
+#: direct 出口的轻量客服 prompt(无工具,一次调用;记忆附加段运行时拼在其后)。
+_DIRECT_SYSTEM = (
+    "你是京东客服。当前输入不需要查询或操作任何数据,直接给出简短、友好、专业的中文回复:"
+    "用户告知的个人信息(姓名/地址等)礼貌确认收到即可,不要提出核实、修改或建工单;"
+    "寒暄和感谢自然回应;问你能做什么就介绍订单物流查询、售后处理、商品导购三类服务。"
+)
 
 _HELP_TEXT = """\
 可用命令:
@@ -198,7 +206,14 @@ def main() -> None:
                 if mode == "router" and target == SUPERVISOR_TARGET:
                     print("  [提示] 分诊判定为复杂问题,本轮升级中心调度处理")
 
-            if target == SUPERVISOR_TARGET:
+            if target == DIRECT_TARGET:
+                # 告知类/寒暄:不派工,轻量一次调用直接回复(最便宜路径)
+                resp = llm.chat(
+                    ctx.to_messages() + [Message("user", line)],
+                    system=_DIRECT_SYSTEM + mem_suffix,
+                )
+                answer = resp.content
+            elif target == SUPERVISOR_TARGET:
                 # 近期对话拼进背景:Planner 拆解与专员执行都能解析跨轮指代
                 recent = "\n".join(t.render_text() for t in ctx.recent_turns)
                 background = mem_suffix + (f"\n\n【近期对话】\n{recent}" if recent else "")

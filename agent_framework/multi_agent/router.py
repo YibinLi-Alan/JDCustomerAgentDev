@@ -16,14 +16,20 @@ from agent_framework.multi_agent.protocol import Specialist, parse_json_object, 
 #: 「复杂问题,升级中心调度」的路由目标(不是专员机器名)。
 SUPERVISOR_TARGET = "supervisor"
 
+#: 「无需派工,客服直接回复」的路由目标(告知类/寒暄类输入的出口,
+#: 2026-07-09 用户自测后评审新增:自报家门不该被派进带工具的专员流水线)。
+DIRECT_TARGET = "direct"
+
 ROUTE_SYSTEM = (
-    "你是京东客服的分诊员。根据用户诉求,从专员花名册中选择一位处理人,"
-    "或判定为需要多专员协作的复杂问题。\n"
+    "你是京东客服的分诊员。根据用户诉求,判定处理路径:直接回复、派给一位专员,"
+    "或升级为需要多专员协作的复杂问题。\n"
     "判定规则:\n"
+    "- 诉求不需要查询或操作任何数据——如自报姓名/地址等个人信息、寒暄、感谢、"
+    f'询问你能做什么 → 输出 "{DIRECT_TARGET}"(客服直接回复,不派工);\n'
     "- 诉求只涉及单一专员的职责,且不需要“先查证再操作”的多步骤配合 → 输出该专员的机器名;\n"
     f'- 诉求涉及多个领域、包含多个动作、或需要先查证再操作 → 输出 "{SUPERVISOR_TARGET}"。\n'
     "只输出 JSON,不要多余文字/解释/代码围栏:\n"
-    '{"target": "<专员机器名或supervisor>", "reason": "<一句话理由>"}'
+    '{"target": "<direct或专员机器名或supervisor>", "reason": "<一句话理由>"}'
 )
 
 
@@ -32,7 +38,8 @@ class RouteDecision:
     """一次分诊决策。
 
     Attributes:
-        target: 专员机器名,或 :data:`SUPERVISOR_TARGET`(升级中心调度)。
+        target: 专员机器名、:data:`SUPERVISOR_TARGET`(升级中心调度),
+            或 :data:`DIRECT_TARGET`(无需派工,客服直接回复)。
         reason: 一句话理由(trace 展示用;降级时说明降级原因)。
     """
 
@@ -72,6 +79,6 @@ class Router:
             return RouteDecision(SUPERVISOR_TARGET, "分诊输出无法解析,降级走中心调度")
         target = str(data.get("target", "")).strip()
         reason = str(data.get("reason", "")).strip()
-        if target != SUPERVISOR_TARGET and target not in self._specialists:
+        if target not in (SUPERVISOR_TARGET, DIRECT_TARGET) and target not in self._specialists:
             return RouteDecision(SUPERVISOR_TARGET, f"分诊目标 {target!r} 不存在,降级走中心调度")
         return RouteDecision(target, reason)

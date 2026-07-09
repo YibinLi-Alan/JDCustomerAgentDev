@@ -115,6 +115,15 @@ def test_router_dispatches_to_specialist() -> None:
     assert decision.reason == "单纯查订单"
 
 
+def test_router_direct_for_informational_input() -> None:
+    from agent_framework.multi_agent import DIRECT_TARGET
+
+    decision = _router([f'{{"target":"{DIRECT_TARGET}","reason":"自报信息,无需派工"}}']).route(
+        "我叫王芳,常用地址是杭州市西湖区"
+    )
+    assert decision.target == DIRECT_TARGET  # 告知类输入不进专员流水线
+
+
 def test_router_escalates_complex_to_supervisor() -> None:
     decision = _router([f'{{"target":"{SUPERVISOR_TARGET}","reason":"退款+推荐跨域"}}']).route(
         "耳机坏了退款并推荐新的"

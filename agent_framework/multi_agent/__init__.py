@@ -20,6 +20,7 @@ from agent_framework.multi_agent.protocol import (
     render_roster,
 )
 from agent_framework.multi_agent.router import (
+    DIRECT_TARGET,
     ROUTE_SYSTEM,
     SUPERVISOR_TARGET,
     RouteDecision,
@@ -34,6 +35,7 @@ from agent_framework.multi_agent.supervisor import (
 
 __all__ = [
     "CRITIC_SYSTEM",
+    "DIRECT_TARGET",
     "FAILURE_MARKER",
     "ROUTE_SYSTEM",
     "SUPERVISOR_TARGET",
