@@ -38,6 +38,7 @@ from agent_framework import (
     default_registry,
     get_settings,
 )
+from agent_framework.multi_agent.protocol import FAILURE_MARKER
 from agent_framework.multi_agent.router import SUPERVISOR_TARGET
 from agent_framework.planning import Planner
 
@@ -62,6 +63,18 @@ def _print_help() -> None:
 def _clip(text: str, limit: int = 90) -> str:
     text = text.replace("\n", " ").strip()
     return text if len(text) <= limit else text[:limit] + "…"
+
+
+def _strip_failure_marker(answer: str) -> str:
+    """剥掉「无法完成:」协议前缀再展示给用户。
+
+    该前缀是专员↔编排器的内部状态码(protocol.FAILURE_MARKER);Supervisor 路径
+    由汇总调用消化,快路径直出专员原话,须在显示层剥掉,内部协议不外泄。
+    """
+    text = answer.strip()
+    if text.startswith(FAILURE_MARKER):
+        text = text[len(FAILURE_MARKER) :].lstrip(":: \n")
+    return text or answer
 
 
 def _print_supervisor_trace(result: SupervisorResult) -> None:
@@ -201,9 +214,9 @@ def main() -> None:
                     max_steps=settings.agent_max_steps,
                     history=ctx.to_messages(),  # 快路径带外层历史,跨轮指代接得上
                 )
-                answer = outcome.answer
+                answer = _strip_failure_marker(outcome.answer)
                 if show_trace and not outcome.ok:
-                    print(f"  [专员回报] {outcome.specialist} 未能完成任务")
+                    print(f"  [专员回报] {outcome.specialist} 未能完成任务(内部标记已剥离)")
 
             print(f"assistant> {answer}")
 
