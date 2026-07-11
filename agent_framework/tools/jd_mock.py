@@ -110,7 +110,12 @@ class QueryProductTool(_JDTool):
     permission = "low"
 
     def _run(self, keyword: str) -> str:
-        hits = [p for p in self._store.products if keyword in p.name]
+        # 分词匹配(评测驱动:整串子串匹配太脆,"Anker 充电器" 匹配不到
+        # "Anker 快充充电器 65W"——中间隔着"快充")。按空白拆词,任一词命中即算。
+        tokens = [t for t in keyword.split() if t]
+        hits = [p for p in self._store.products if any(t in p.name for t in tokens)] or [
+            p for p in self._store.products if keyword in p.name
+        ]
         if not hits:
             return f"未找到与“{keyword}”相关的商品,请换个关键词试试。"
         lines = [

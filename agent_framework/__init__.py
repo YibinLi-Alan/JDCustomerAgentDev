@@ -11,6 +11,9 @@
 - 阶段五:Planning 与 Multi-Agent —— ``Planner``/``PlanExecutor``(先规划再执行 +
   动态重规划)+ ``Router``/``Supervisor`` 双编排模式 + 三业务专员
   (``create_specialists`` 一行装配)+ ``Critic`` 终稿质检。
+- 阶段六:生产化 —— 可靠性(``ReliableLLM``/``FallbackLLM`` 重试降级)、可观测
+  (``Tracer``/metrics)、安全(``ApprovalGate``/``HandoffQueue`` HITL + 过滤/限流)、
+  评估(``Judge`` LLM-as-Judge)、``AgentService`` 整栈门面 + FastAPI 服务。
 
 上层代码(CLI、示例、未来的业务)应只从这里导入接口与类型,并通过 ``create_llm``
 按配置拿到具体 LLM 实现,不直接 import ``anthropic`` / ``openai``。
@@ -37,6 +40,8 @@ from agent_framework.core.llm import (
 )
 from agent_framework.core.llm_claude import ClaudeLLM
 from agent_framework.core.llm_openai import OpenAILLM
+from agent_framework.core.llm_reliable import FallbackLLM, ReliableLLM
+from agent_framework.evaluation.judge import Judge
 from agent_framework.memory import (
     LongTermMemory,
     MemoryContext,
@@ -63,6 +68,13 @@ from agent_framework.multi_agent import (
     create_specialists,
     render_roster,
 )
+from agent_framework.observability import (
+    TaskMetrics,
+    TraceEvent,
+    Tracer,
+    aggregate,
+    summarize_trace,
+)
 from agent_framework.planning import (
     ExecutionResult,
     Plan,
@@ -72,6 +84,18 @@ from agent_framework.planning import (
     ScratchPad,
     StepResult,
 )
+from agent_framework.safety import (
+    ApprovalGate,
+    ApprovalPolicy,
+    BoundaryRegistry,
+    HandoffItem,
+    HandoffQueue,
+    RateLimiter,
+    TokenBudget,
+    filter_output,
+    inspect_input,
+)
+from agent_framework.service import AgentService, ServiceResult
 from agent_framework.tools import (
     JD_MOCK_TOOLS,
     BaseTool,
@@ -147,6 +171,26 @@ __all__ = [
     "SupervisorResult",
     "Critic",
     "Critique",
+    # 阶段六:生产化
+    "ReliableLLM",
+    "FallbackLLM",
+    "Tracer",
+    "TraceEvent",
+    "TaskMetrics",
+    "aggregate",
+    "summarize_trace",
+    "ApprovalGate",
+    "ApprovalPolicy",
+    "HandoffQueue",
+    "HandoffItem",
+    "BoundaryRegistry",
+    "RateLimiter",
+    "TokenBudget",
+    "inspect_input",
+    "filter_output",
+    "Judge",
+    "AgentService",
+    "ServiceResult",
 ]
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
