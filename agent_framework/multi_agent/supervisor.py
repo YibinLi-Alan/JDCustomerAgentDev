@@ -228,8 +228,9 @@ class Supervisor:
             max_replans=self._max_replans,
         )
         execution = executor.execute(plan, notes=ScratchPad(), stop_when=stop_when)
+        final_plan = execution.plan or plan  # executor 总会回填,None 时兜底原计划
         if execution.replanned:
-            emit("replan", plan=[f"step-{s.id} {s.description}" for s in execution.plan.steps])
+            emit("replan", plan=[f"step-{s.id} {s.description}" for s in final_plan.steps])
 
         escalations: list[HandoffItem] = []
         evidence = _render_evidence(execution.results)

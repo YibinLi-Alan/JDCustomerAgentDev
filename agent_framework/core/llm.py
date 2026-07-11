@@ -100,7 +100,11 @@ class LLM(Protocol):
     「实现 + 配置」职责,由实现的构造函数从 :class:`Settings` 注入。
     """
 
-    model: str  # 实现解析后实际使用的模型 id(供 CLI / 日志展示)
+    @property
+    def model(self) -> str:  # 实现解析后实际使用的模型 id(供 CLI / 日志展示)
+        # 声明为只读 property:裸实现(ClaudeLLM 的 self.model=...)与包装层
+        # (ReliableLLM 的 @property model)都能满足它——后者是可变数据属性无法匹配的。
+        ...
 
     def chat(
         self,

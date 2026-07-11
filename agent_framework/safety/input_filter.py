@@ -17,8 +17,8 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from agent_framework.tools.base import ToolResult
-from agent_framework.tools.registry import ToolRegistry
+from agent_framework.tools.base import BaseTool, ToolResult
+from agent_framework.tools.registry import ToolRegistry, ToolRegistryLike
 
 #: 拼进专员 system prompt 的加固条款(specialists.py 公共底座引用)。
 HARDENING_CLAUSE = (
@@ -97,14 +97,14 @@ def wrap_tool_data(text: str) -> str:
 
 
 class BoundaryRegistry:
-    """给任意 Registry 的执行结果包边界标记的包装(registry 鸭子协议)。
+    """给任意 Registry 的执行结果包边界标记的包装(实现 ``ToolRegistryLike``)。
 
     与 ``ApprovalGate`` 同为装饰器,可自由组合:
     ``ApprovalGate(BoundaryRegistry(registry.subset(...)), ...)``——
     边界包在最内层(最贴近不可信数据),审批语等框架自产文本不包。
     """
 
-    def __init__(self, inner: ToolRegistry) -> None:
+    def __init__(self, inner: ToolRegistryLike) -> None:
         self._inner = inner
 
     def invoke(
@@ -122,7 +122,7 @@ class BoundaryRegistry:
     def to_schemas(self) -> list[dict[str, object]]:
         return self._inner.to_schemas()
 
-    def get(self, name: str):  # type: ignore[no-untyped-def]
+    def get(self, name: str) -> BaseTool:
         return self._inner.get(name)
 
     @property

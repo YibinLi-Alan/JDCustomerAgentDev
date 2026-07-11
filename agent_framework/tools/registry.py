@@ -11,9 +11,33 @@ Agent 不再拿一个工具 list,而是拿一个 Registry:
 
 from __future__ import annotations
 
-from typing import Iterable, Iterator
+from typing import Iterable, Iterator, Protocol, runtime_checkable
 
 from agent_framework.tools.base import BaseTool, ToolError, ToolResult
+
+
+@runtime_checkable
+class ToolRegistryLike(Protocol):
+    """工具库的**运行时接口** —— Agent 循环与装饰器共同遵守的最小契约。
+
+    ``ToolRegistry`` 是它的规范实现;``safety`` 的装饰器(``ApprovalGate`` /
+    ``BoundaryRegistry``)也实现它,从而能透明包装真实 Registry——上层(专员 /
+    编排 / ToolCallingAgent)只依赖本协议,不关心手里的 registry 被包过几层。
+    这把原先的「鸭子约定」升级为正式接口(阶段六代码审查补强)。
+    """
+
+    def invoke(
+        self, name: str, args: dict[str, object] | None = None, *, request_id: str | None = None
+    ) -> ToolResult: ...
+
+    def to_schemas(self) -> list[dict[str, object]]: ...
+
+    def get(self, name: str) -> BaseTool: ...
+
+    def render_catalog(self) -> str: ...
+
+    @property
+    def names(self) -> list[str]: ...
 
 
 class ToolRegistrationError(ToolError):

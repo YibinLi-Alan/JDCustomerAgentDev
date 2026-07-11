@@ -26,8 +26,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
-from agent_framework.tools.base import ToolResult
-from agent_framework.tools.registry import ToolRegistry
+from agent_framework.tools.base import BaseTool, ToolResult
+from agent_framework.tools.registry import ToolRegistry, ToolRegistryLike
 
 if TYPE_CHECKING:
     from agent_framework.core.config import Settings
@@ -259,7 +259,7 @@ class ApprovalGate:
 
     def __init__(
         self,
-        inner: ToolRegistry,
+        inner: ToolRegistryLike,
         queue: HandoffQueue,
         policy: ApprovalPolicy,
         *,
@@ -317,11 +317,11 @@ class ApprovalGate:
             )
         return self._inner.invoke(name, args, request_id=request_id)
 
-    # ---- registry 鸭子协议透传 ---- #
+    # ---- ToolRegistryLike 接口透传 ---- #
     def to_schemas(self) -> list[dict[str, object]]:
         return self._inner.to_schemas()
 
-    def get(self, name: str):  # type: ignore[no-untyped-def]
+    def get(self, name: str) -> BaseTool:
         return self._inner.get(name)
 
     @property

@@ -32,6 +32,11 @@ class TaskMetrics:
         return self.input_tokens + self.output_tokens
 
 
+def _as_int(value: object) -> int:
+    """把 trace payload 里的值安全取成 int(非 int 一律计 0)。"""
+    return value if isinstance(value, int) else 0
+
+
 def summarize_trace(events: list[TraceEvent]) -> TaskMetrics:
     """把一次任务的事件流压成一行指标。"""
     llm_calls = tool_calls = input_tokens = output_tokens = 0
@@ -40,8 +45,8 @@ def summarize_trace(events: list[TraceEvent]) -> TaskMetrics:
     for e in events:
         if e.kind == "llm_call":
             llm_calls += 1
-            input_tokens += int(e.payload.get("input_tokens", 0) or 0)
-            output_tokens += int(e.payload.get("output_tokens", 0) or 0)
+            input_tokens += _as_int(e.payload.get("input_tokens"))
+            output_tokens += _as_int(e.payload.get("output_tokens"))
         elif e.kind == "tool_call":
             tool_calls += 1
         elif e.kind in ("approval_pending", "escalation"):

@@ -110,7 +110,7 @@ class AgentService:
                 item
             ),  # 延迟读属性,配合每请求清空
         )
-        return dataclasses.replace(spec, registry=gated)  # type: ignore[arg-type]
+        return dataclasses.replace(spec, registry=gated)  # gated 满足 ToolRegistryLike
 
     def _manager(self, user_id: str) -> MemoryManager:
         if user_id not in self._managers:

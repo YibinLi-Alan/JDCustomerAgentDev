@@ -34,7 +34,7 @@ from agent_framework.core.llm import LLM, Message
 
 if TYPE_CHECKING:
     from agent_framework.tools.base import Tool
-    from agent_framework.tools.registry import ToolRegistry
+    from agent_framework.tools.registry import ToolRegistryLike
 
 
 # --------------------------------------------------------------------------- #
@@ -406,7 +406,7 @@ class ToolCallingAgent:
     def __init__(
         self,
         llm: LLM,
-        registry: ToolRegistry,
+        registry: ToolRegistryLike,
         *,
         max_steps: int = 5,
         system_prompt: str | None = None,

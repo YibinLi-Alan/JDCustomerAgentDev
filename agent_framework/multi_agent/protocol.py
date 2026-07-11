@@ -19,7 +19,7 @@ from dataclasses import dataclass
 
 from agent_framework.core.agent import AgentResult, ToolCallingAgent
 from agent_framework.core.llm import LLM
-from agent_framework.tools.registry import ToolRegistry
+from agent_framework.tools.registry import ToolRegistryLike
 
 #: 专员「明示办不到」的答复前缀(prompt 约定 + 编排器解析,协议的两端)。
 FAILURE_MARKER = "无法完成"
@@ -80,14 +80,16 @@ class Specialist:
         title: 中文头衔(如 ``"订单物流专员"``),进 prompt 与展示。
         description: 职责边界一句话——Router 分诊与 Planner 选人的**唯一依据**,
             要写清管什么、不管什么。
-        registry: 工具子集(``ToolRegistry.subset()`` 切出,实例与全量库共享)。
+        registry: 工具子集(``ToolRegistry.subset()`` 切出,实例与全量库共享);
+            类型是 ``ToolRegistryLike``,故可被 ``ApprovalGate`` / ``BoundaryRegistry``
+            透明包装(service 层装配安全闸门时用)。
         system_prompt: 专属 system prompt(公共底座 + 域块,见 specialists.py)。
     """
 
     name: str
     title: str
     description: str
-    registry: ToolRegistry
+    registry: ToolRegistryLike
     system_prompt: str
 
     def build(

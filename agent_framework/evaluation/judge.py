@@ -154,10 +154,10 @@ def _ask_winner(llm: LLM, query: str, first: str, second: str) -> str:
 
 
 def _clamp(value: object) -> int:
-    try:
-        return max(1, min(5, int(value)))  # type: ignore[arg-type]
-    except (TypeError, ValueError):
+    """把裁判给的分数夹到 1-5;非数字一律取中性分 3。"""
+    if not isinstance(value, (int, float)):
         return 3
+    return max(1, min(5, int(value)))
 
 
 def _parse_json_object(text: str) -> dict[str, object] | None:

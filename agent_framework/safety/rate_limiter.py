@@ -10,6 +10,15 @@ from __future__ import annotations
 import time
 from collections import defaultdict, deque
 from collections.abc import Callable
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from agent_framework.observability.tracer import TraceEvent
+
+
+def _as_int(value: object) -> int:
+    """把 trace payload 里的值安全取成 int(非 int 一律计 0)。"""
+    return value if isinstance(value, int) else 0
 
 
 class RateLimiter:
@@ -59,18 +68,23 @@ class TokenBudget:
         self.used = 0
 
     def add(self, input_tokens: int, output_tokens: int) -> None:
+        """累加一次调用的 token 用量。"""
         self.used += int(input_tokens) + int(output_tokens)
 
-    def on_trace_event(self, event) -> None:  # type: ignore[no-untyped-def]
-        """Tracer listener 适配:自动从 llm_call 事件累计。"""
-        if getattr(event, "kind", "") == "llm_call":
-            payload = getattr(event, "payload", {})
-            self.add(payload.get("input_tokens", 0) or 0, payload.get("output_tokens", 0) or 0)
+    def on_trace_event(self, event: TraceEvent) -> None:
+        """Tracer listener 适配:自动从 ``llm_call`` 事件累计 token 用量。"""
+        if event.kind == "llm_call":
+            self.add(
+                _as_int(event.payload.get("input_tokens")),
+                _as_int(event.payload.get("output_tokens")),
+            )
 
     @property
     def exceeded(self) -> bool:
+        """是否已超预算(超限即刹车,交给编排层转人工)。"""
         return self.used > self._limit
 
     @property
     def limit(self) -> int:
+        """预算上限(只读)。"""
         return self._limit
