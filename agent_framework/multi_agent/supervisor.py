@@ -23,7 +23,12 @@ from agent_framework.multi_agent.protocol import (
     render_roster,
 )
 from agent_framework.observability.tracer import Tracer
-from agent_framework.planning.executor import PlanExecutor, ScratchPad, StepResult
+from agent_framework.planning.executor import (
+    ExecutionResult,
+    PlanExecutor,
+    ScratchPad,
+    StepResult,
+)
 from agent_framework.planning.planner import Plan, Planner, PlanStep
 from agent_framework.safety.approval import HandoffItem, HandoffQueue
 from agent_framework.safety.rate_limiter import TokenBudget
@@ -188,7 +193,46 @@ class Supervisor:
             tracer.add_listener(token_budget.on_trace_event)
         on_event = tracer.as_on_event() if tracer is not None else None
 
-        # ① 计划(planner 缺省 → 整包直派兜底专员)
+        # ① 计划 → ② 逐步派工(含重规划、超时/超预算刹车)
+        plan = self._build_plan(query, memory_context, emit)
+        execution = self._execute_plan(plan, memory_context, on_event, emit, token_budget)
+        final_plan = execution.plan or plan  # executor 总会回填,None 时兜底原计划
+        if execution.replanned:
+            emit("replan", plan=[f"step-{s.id} {s.description}" for s in final_plan.steps])
+
+        escalations: list[HandoffItem] = []
+        evidence = _render_evidence(execution.results)
+
+        # 第④层保险:超时/超预算 → 早退转人工,不再烧钱汇总
+        if execution.interrupted:
+            return self._interrupted_result(
+                execution, final_plan, evidence or query, user_id, escalations, emit, token_budget
+            )
+
+        # 兜底升级入口 B-①:重规划耗尽仍有失败 → 转人工,证据里如实标注
+        evidence = self._escalate_unresolved(execution, evidence, user_id, escalations, emit)
+
+        # ③ 汇总 → ④ 质检回炉(不合格 → B-② 人工复核)
+        answer, critiques, resynthesized = self._synthesize_and_review(
+            query, evidence, user_id, escalations, emit
+        )
+
+        return SupervisorResult(
+            final_answer=answer,
+            plan=final_plan,
+            step_results=execution.results,
+            replanned=execution.replanned,
+            critiques=critiques,
+            resynthesized=resynthesized,
+            escalations=escalations,
+        )
+
+    # ------------------------------------------------------------------ #
+    # handle 的分阶段私有方法(阶段六代码审查:把 148 行的 handle 拆开)          #
+    # ------------------------------------------------------------------ #
+
+    def _build_plan(self, query: str, memory_context: str, emit: Callable[..., None]) -> Plan:
+        """① 生成计划;planner 缺省则整包直派兜底专员(退化为单 Agent 行为)。"""
         if self._planner is not None:
             plan = self._planner.plan(
                 query, roster=self._roster, specialists=self._names, context=memory_context
@@ -197,12 +241,18 @@ class Supervisor:
             plan = Plan(
                 goal=query, steps=(PlanStep(id=1, description=query, specialist=self._names[0]),)
             )
-        emit(
-            "plan",
-            steps=[f"step-{s.id}({s.specialist}){s.description}" for s in plan.steps],
-        )
+        emit("plan", steps=[f"step-{s.id}({s.specialist}){s.description}" for s in plan.steps])
+        return plan
 
-        # ② 逐步派工(失败触发重规划;第④层保险:超时/超预算在步骤边界刹车)
+    def _execute_plan(
+        self,
+        plan: Plan,
+        memory_context: str,
+        on_event: Callable[[str, dict[str, object]], None] | None,
+        emit: Callable[..., None],
+        token_budget: TokenBudget | None,
+    ) -> ExecutionResult:
+        """② 逐步派工;失败触发重规划,第④层保险(超时/超预算)在步骤边界刹车。"""
         deadline = (
             self._clock() + self._deadline_seconds if self._deadline_seconds is not None else None
         )
@@ -227,84 +277,96 @@ class Supervisor:
             specialists=self._names,
             max_replans=self._max_replans,
         )
-        execution = executor.execute(plan, notes=ScratchPad(), stop_when=stop_when)
-        final_plan = execution.plan or plan  # executor 总会回填,None 时兜底原计划
-        if execution.replanned:
-            emit("replan", plan=[f"step-{s.id} {s.description}" for s in final_plan.steps])
+        return executor.execute(plan, notes=ScratchPad(), stop_when=stop_when)
 
-        escalations: list[HandoffItem] = []
-        evidence = _render_evidence(execution.results)
+    def _interrupted_result(
+        self,
+        execution: ExecutionResult,
+        final_plan: Plan,
+        context: str,
+        user_id: str,
+        escalations: list[HandoffItem],
+        emit: Callable[..., None],
+        token_budget: TokenBudget | None,
+    ) -> SupervisorResult:
+        """第④层保险触发的早退结果:转人工话术 + 升级单,不做汇总。"""
+        reason = (
+            "单任务 token 预算耗尽"
+            if token_budget is not None and token_budget.exceeded
+            else f"整任务超时(上限 {self._deadline_seconds} 秒)"
+        )
+        item = self._escalate(user_id, reason, context, escalations, emit)
+        suffix = f"(工单号 {item.id})" if item is not None else ""
+        answer = (
+            "非常抱歉,您的问题处理耗时超出预期,已为您转接人工客服跟进" f"{suffix},会尽快与您联系。"
+        )
+        return SupervisorResult(
+            final_answer=answer,
+            plan=final_plan,
+            step_results=execution.results,
+            replanned=execution.replanned,
+            escalations=escalations,
+            interrupted=True,
+        )
 
-        # 第④层保险触发:超时/超预算 → 不再烧钱汇总,直接转人工话术
-        if execution.interrupted:
-            reason = (
-                "单任务 token 预算耗尽"
-                if token_budget is not None and token_budget.exceeded
-                else f"整任务超时(上限 {self._deadline_seconds} 秒)"
+    def _escalate_unresolved(
+        self,
+        execution: ExecutionResult,
+        evidence: str,
+        user_id: str,
+        escalations: list[HandoffItem],
+        emit: Callable[..., None],
+    ) -> str:
+        """入口 B-①:重规划耗尽仍有失败 → 转人工,并在证据里标注供汇总如实告知。"""
+        if not execution.unresolved_failures:
+            return evidence
+        failed = ";".join(
+            f"step-{r.step.id} {r.step.description}" for r in execution.unresolved_failures
+        )
+        item = self._escalate(user_id, f"自动处理未完成:{failed}", evidence, escalations, emit)
+        if item is not None:
+            evidence += (
+                f"\n(系统提示:上述失败部分已自动转人工跟进,工单号 {item.id},"
+                "24 小时内联系用户——请在答复中如实告知)"
             )
-            item = self._escalate(user_id, reason, evidence or query, escalations, emit)
-            suffix = f"(工单号 {item.id})" if item is not None else ""
-            answer = (
-                "非常抱歉,您的问题处理耗时超出预期,已为您转接人工客服跟进"
-                f"{suffix},会尽快与您联系。"
-            )
-            return SupervisorResult(
-                final_answer=answer,
-                plan=execution.plan or plan,
-                step_results=execution.results,
-                replanned=execution.replanned,
-                escalations=escalations,
-                interrupted=True,
-            )
+        return evidence
 
-        # 兜底升级入口 B-①:重规划耗尽后仍有失败 → 转人工,汇总时如实告知
-        if execution.unresolved_failures:
-            failed = ";".join(
-                f"step-{r.step.id} {r.step.description}" for r in execution.unresolved_failures
-            )
-            item = self._escalate(user_id, f"自动处理未完成:{failed}", evidence, escalations, emit)
-            if item is not None:
-                evidence += (
-                    f"\n(系统提示:上述失败部分已自动转人工跟进,工单号 {item.id},"
-                    "24 小时内联系用户——请在答复中如实告知)"
-                )
-
-        # ③ 汇总 → ④ 质检回炉(≤ critic_max_retries 次)
+    def _synthesize_and_review(
+        self,
+        query: str,
+        evidence: str,
+        user_id: str,
+        escalations: list[HandoffItem],
+        emit: Callable[..., None],
+    ) -> tuple[str, list[Critique], bool]:
+        """③ 汇总 → ④ 质检回炉(≤ critic_max_retries 次);二审不过 → 入口 B-② 人工复核。"""
         answer = self._synthesize(query, evidence)
         emit("synthesize", chars=len(answer))
         critiques: list[Critique] = []
         resynthesized = False
-        if self._critic is not None:
+        if self._critic is None:
+            return answer, critiques, resynthesized
+
+        critique = self._critic.review(query, answer, evidence)
+        critiques.append(critique)
+        emit("critic", round=1, passed=critique.passed, issues=critique.issues)
+        retries = 0
+        while not critique.passed and retries < self._critic_max_retries:
+            retries += 1
+            resynthesized = True
+            answer = self._synthesize(query, evidence, issues=critique.issues)
             critique = self._critic.review(query, answer, evidence)
             critiques.append(critique)
-            emit("critic", round=1, passed=critique.passed, issues=critique.issues)
-            retries = 0
-            while not critique.passed and retries < self._critic_max_retries:
-                retries += 1
-                resynthesized = True
-                answer = self._synthesize(query, evidence, issues=critique.issues)
-                critique = self._critic.review(query, answer, evidence)
-                critiques.append(critique)
-                emit("critic", round=retries + 1, passed=critique.passed, issues=critique.issues)
-            # 二审仍不合格:放行留痕 + 兜底升级入口 B-②(人工复核答复)
-            if not critique.passed:
-                self._escalate(
-                    user_id,
-                    "质检二审仍不合格,答复已放行,需人工复核",
-                    f"【答复】{answer}\n【质检意见】{'; '.join(critique.issues)}",
-                    escalations,
-                    emit,
-                )
-
-        return SupervisorResult(
-            final_answer=answer,
-            plan=execution.plan or plan,
-            step_results=execution.results,
-            replanned=execution.replanned,
-            critiques=critiques,
-            resynthesized=resynthesized,
-            escalations=escalations,
-        )
+            emit("critic", round=retries + 1, passed=critique.passed, issues=critique.issues)
+        if not critique.passed:  # 二审仍不合格:放行留痕 + B-② 人工复核
+            self._escalate(
+                user_id,
+                "质检二审仍不合格,答复已放行,需人工复核",
+                f"【答复】{answer}\n【质检意见】{'; '.join(critique.issues)}",
+                escalations,
+                emit,
+            )
+        return answer, critiques, resynthesized
 
     # ------------------------------------------------------------------ #
     # 内部                                                                  #

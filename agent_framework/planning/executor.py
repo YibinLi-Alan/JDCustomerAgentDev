@@ -205,14 +205,7 @@ class PlanExecutor:
                 continue
 
             replans_used += 1
-            completed = [r for r in results if r.ok]
-            current_plan = self._replanner.replan(
-                current_plan,
-                completed=completed,
-                failure=result,
-                roster=self._roster,
-                specialists=self._specialists,
-            )
+            current_plan = self._replan_after_failure(current_plan, result, results)
             pending = deque(current_plan.steps)  # 剩余步骤整体替换为新计划
 
         return ExecutionResult(
@@ -221,6 +214,20 @@ class PlanExecutor:
             plan=current_plan,
             interrupted=interrupted,
             unresolved_failures=unresolved,
+        )
+
+    def _replan_after_failure(
+        self, current_plan: Plan, failure: StepResult, results: list[StepResult]
+    ) -> Plan:
+        """某步失败后重排剩余计划(已成功步骤不重跑,喂给 replanner 防重复安排)。"""
+        assert self._replanner is not None  # 调用点(execute)已保证非 None 才走到这里
+        completed = [r for r in results if r.ok]
+        return self._replanner.replan(
+            current_plan,
+            completed=completed,
+            failure=failure,
+            roster=self._roster,
+            specialists=self._specialists,
         )
 
     def _run_one(self, step: PlanStep, context: str) -> StepResult:
