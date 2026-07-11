@@ -9,3 +9,7 @@ python-dotenv>=1.0
 # 阶段四:长期记忆的持久化向量库(嵌入式,无需单独起服务;chromadb 延迟导入,
 # 不用 Chroma 后端时可不装 —— 单测跑的是 InMemoryVectorStore)
 chromadb>=0.5
+# 阶段六:HTTP 服务化(只在起 API / 跑 API 测试时需要;import 框架核心不依赖它,
+# server.py 里才 import fastapi;test_api.py 用 importorskip 缺失即跳过)
+fastapi>=0.115
+uvicorn>=0.30

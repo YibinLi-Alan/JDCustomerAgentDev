@@ -1,0 +1,14 @@
+# 绝不进镜像:密钥、Obsidian 知识库、有状态数据(运行时挂卷)、缓存与测试
+.env
+.env.*
+AgentKnowledge/
+data/
+docs/
+tests/
+examples/
+frame/
+.git/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/

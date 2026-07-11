@@ -269,3 +269,8 @@ class AgentService:
     def queue(self) -> HandoffQueue:
         """人工介入队列(API /approvals 与控制台共用)。"""
         return self._queue
+
+    @property
+    def base_registry(self) -> ToolRegistry:
+        """全量工具库(审批放行时用它执行挂起动作,与业务共享同一数据源)。"""
+        return self._base_registry
