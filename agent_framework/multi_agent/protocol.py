@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 from agent_framework.core.agent import AgentResult, ToolCallingAgent
@@ -90,7 +90,14 @@ class Specialist:
     registry: ToolRegistry
     system_prompt: str
 
-    def build(self, llm: LLM, *, extra_system: str = "", max_steps: int = 5) -> ToolCallingAgent:
+    def build(
+        self,
+        llm: LLM,
+        *,
+        extra_system: str = "",
+        max_steps: int = 5,
+        on_event: Callable[[str, dict[str, object]], None] | None = None,
+    ) -> ToolCallingAgent:
         """按轮现造专员 Agent(无状态,用完即弃)。
 
         Args:
@@ -98,9 +105,12 @@ class Specialist:
             extra_system: 追加的 system 附加段(阶段四记忆的
                 ``ctx.system_suffix()`` 从这里注入,专员共享同一份用户事实)。
             max_steps: 专员内环步数上限(循环护栏之一)。
+            on_event: 可观测钩子(阶段六),透传给 ``ToolCallingAgent``。
         """
         system = self.system_prompt + extra_system
-        return ToolCallingAgent(llm, self.registry, max_steps=max_steps, system_prompt=system)
+        return ToolCallingAgent(
+            llm, self.registry, max_steps=max_steps, system_prompt=system, on_event=on_event
+        )
 
     def handle(
         self,
@@ -110,6 +120,7 @@ class Specialist:
         extra_system: str = "",
         max_steps: int = 5,
         history: list | None = None,
+        on_event: Callable[[str, dict[str, object]], None] | None = None,
     ) -> TaskOutcome:
         """执行一次任务派发,回报 :class:`TaskOutcome`。
 
@@ -119,8 +130,9 @@ class Specialist:
         Args:
             history: 外层干净对话历史(Router 直派时传入,供跨轮指代;
                 Supervisor 派工不传——步骤任务自带 ScratchPad 上下文)。
+            on_event: 可观测钩子(阶段六),透传给专员内环。
         """
-        agent = self.build(llm, extra_system=extra_system, max_steps=max_steps)
+        agent = self.build(llm, extra_system=extra_system, max_steps=max_steps, on_event=on_event)
         result = agent.run(assignment.to_user_input(), history=history)
         failed = result.stopped_reason == "max_steps" or result.final_answer.strip().startswith(
             FAILURE_MARKER

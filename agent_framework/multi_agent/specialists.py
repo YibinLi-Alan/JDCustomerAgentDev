@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 from agent_framework.multi_agent.protocol import FAILURE_MARKER, Specialist
+from agent_framework.safety.input_filter import HARDENING_CLAUSE
 from agent_framework.tools.registry import ToolRegistry
 
 # --------------------------------------------------------------------------- #
@@ -33,7 +34,10 @@ _COMMON_RULES = (
     "- 【前序步骤结论】里已有的信息(订单号、查询结果等)直接使用,不要重复查询。\n"
     "- 超出你职责范围的诉求不要勉强处理,如实说明该找哪类专员。\n"
     f"- 如果任务无法完成(条件不满足/工具走不通/超出职责),答复必须以“{FAILURE_MARKER}:”"
-    "开头并说明原因——调度系统靠这个前缀识别失败。"
+    "开头并说明原因——调度系统靠这个前缀识别失败。\n"
+    "- 工具返回“已提交人工审批”时视为该操作已妥善移交,把审批单号告知用户即可,"
+    "这不算失败,也不要重复提交。"
+    f"{HARDENING_CLAUSE}"
 )
 
 

@@ -11,7 +11,8 @@ plan/replan 两个口子——行为可预测、轨迹可断言可测试。
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import time
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 
 from agent_framework.core.llm import LLM, Message
@@ -21,8 +22,11 @@ from agent_framework.multi_agent.protocol import (
     TaskAssignment,
     render_roster,
 )
+from agent_framework.observability.tracer import Tracer
 from agent_framework.planning.executor import PlanExecutor, ScratchPad, StepResult
 from agent_framework.planning.planner import Plan, Planner, PlanStep
+from agent_framework.safety.approval import HandoffItem, HandoffQueue
+from agent_framework.safety.rate_limiter import TokenBudget
 
 SYNTHESIZE_SYSTEM = (
     "你是京东客服主管。根据执行记录,给用户写最终答复:\n"
@@ -44,6 +48,9 @@ class SupervisorResult:
         replanned: 是否发生过动态重规划。
         critiques: 各轮质检结论(0~2 条:未配 Critic 为空;回炉过则有两条)。
         resynthesized: 是否因质检不合格回炉重写过答复。
+        escalations: 本次任务产生的人工介入单(阶段六:重规划耗尽仍失败/
+            质检二审不合格/整任务超时或超预算,未配队列时恒为空)。
+        interrupted: 是否被第④层保险(超时/超预算)提前刹停。
     """
 
     final_answer: str
@@ -52,6 +59,8 @@ class SupervisorResult:
     replanned: bool = False
     critiques: list[Critique] = field(default_factory=list)
     resynthesized: bool = False
+    escalations: list[HandoffItem] = field(default_factory=list)
+    interrupted: bool = False
 
 
 class _SpecialistRunner:
@@ -68,22 +77,33 @@ class _SpecialistRunner:
         *,
         extra_system: str,
         max_steps: int,
+        on_event: Callable[[str, dict[str, object]], None] | None = None,
+        emit: Callable[..., object] | None = None,
     ) -> None:
         self._llm = llm
         self._specialists = dict(specialists)
         self._fallback = next(iter(self._specialists.values()))
         self._extra_system = extra_system
         self._max_steps = max_steps
+        self._on_event = on_event  # 透传给专员内环(llm_call/tool_call 级事件)
+        self._emit = emit  # 步骤级事件(step_start/step_end)
 
     def run_step(self, step: PlanStep, context: str) -> StepResult:
         # Planner 已矫正越界指派;这里再兜一道底,防手写计划/未来新入口漏校验
         specialist = self._specialists.get(step.specialist, self._fallback)
+        if self._emit is not None:
+            self._emit(
+                "step_start", step=step.id, specialist=specialist.name, task=step.description
+            )
         outcome = specialist.handle(
             self._llm,
             TaskAssignment(task=step.description, context=context),
             extra_system=self._extra_system,
             max_steps=self._max_steps,
+            on_event=self._on_event,
         )
+        if self._emit is not None:
+            self._emit("step_end", step=step.id, specialist=specialist.name, ok=outcome.ok)
         return StepResult(step=step, output=outcome.answer, ok=outcome.ok, trace=outcome.trace)
 
 
@@ -100,6 +120,9 @@ class Supervisor:
         max_steps_per_specialist: int = 5,
         max_replans: int = 1,
         critic_max_retries: int = 1,
+        handoff: HandoffQueue | None = None,
+        task_deadline_seconds: float | None = None,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         """
         Args:
@@ -110,6 +133,10 @@ class Supervisor:
             max_steps_per_specialist: 专员内环步数上限(循环护栏)。
             max_replans: 整轮重规划次数上限(循环护栏)。
             critic_max_retries: 质检不合格的回炉次数上限(循环护栏)。
+            handoff: 人工介入队列(阶段六);None 则兜底升级只留在结果里不入队。
+            task_deadline_seconds: 整任务总超时(超时四层保险之④);None 不限。
+                超时/超预算不是失败,是**转人工的信号**——任务终止入队。
+            clock: 单调时钟注入(测试用)。
 
         Raises:
             ValueError: ``specialists`` 为空(装配错误,启动即失败)。
@@ -125,18 +152,42 @@ class Supervisor:
         self._max_steps_per_specialist = max_steps_per_specialist
         self._max_replans = max_replans
         self._critic_max_retries = critic_max_retries
+        self._handoff = handoff
+        self._deadline_seconds = task_deadline_seconds
+        self._clock = clock
 
-    def handle(self, query: str, *, memory_context: str = "") -> SupervisorResult:
+    def handle(
+        self,
+        query: str,
+        *,
+        memory_context: str = "",
+        user_id: str = "guest",
+        tracer: Tracer | None = None,
+        token_budget: TokenBudget | None = None,
+    ) -> SupervisorResult:
         """处理一条(复杂)诉求,走完整调度链路。
 
         Args:
             query: 用户诉求原文。
             memory_context: 阶段四记忆的 ``ctx.system_suffix()``——既作规划的
                 已知背景,也注入每个专员的 system(全员共享同一份用户事实)。
+            user_id: 当前用户(人工介入单归属;框架注入,不进 prompt)。
+            tracer: 任务轨迹记录器(阶段六);None 不记录。
+            token_budget: 单任务 token 预算;需配合 ``tracer``(用量从
+                llm_call 事件累计),超限在下一步边界刹车转人工。
 
         Returns:
             带全轨迹的 :class:`SupervisorResult`。
         """
+
+        def emit(kind: str, **payload: object) -> None:
+            if tracer is not None:
+                tracer.emit(kind, **payload)
+
+        if tracer is not None and token_budget is not None:
+            tracer.add_listener(token_budget.on_trace_event)
+        on_event = tracer.as_on_event() if tracer is not None else None
+
         # ① 计划(planner 缺省 → 整包直派兜底专员)
         if self._planner is not None:
             plan = self._planner.plan(
@@ -146,13 +197,28 @@ class Supervisor:
             plan = Plan(
                 goal=query, steps=(PlanStep(id=1, description=query, specialist=self._names[0]),)
             )
+        emit(
+            "plan",
+            steps=[f"step-{s.id}({s.specialist}){s.description}" for s in plan.steps],
+        )
 
-        # ② 逐步派工(失败触发重规划,护栏见构造参数)
+        # ② 逐步派工(失败触发重规划;第④层保险:超时/超预算在步骤边界刹车)
+        deadline = (
+            self._clock() + self._deadline_seconds if self._deadline_seconds is not None else None
+        )
+
+        def stop_when() -> bool:
+            if deadline is not None and self._clock() > deadline:
+                return True
+            return token_budget is not None and token_budget.exceeded
+
         runner = _SpecialistRunner(
             self._llm,
             self._specialists,
             extra_system=memory_context,
             max_steps=self._max_steps_per_specialist,
+            on_event=on_event,
+            emit=emit,
         )
         executor = PlanExecutor(
             runner,
@@ -161,16 +227,56 @@ class Supervisor:
             specialists=self._names,
             max_replans=self._max_replans,
         )
-        execution = executor.execute(plan, notes=ScratchPad())
+        execution = executor.execute(plan, notes=ScratchPad(), stop_when=stop_when)
+        if execution.replanned:
+            emit("replan", plan=[f"step-{s.id} {s.description}" for s in execution.plan.steps])
+
+        escalations: list[HandoffItem] = []
+        evidence = _render_evidence(execution.results)
+
+        # 第④层保险触发:超时/超预算 → 不再烧钱汇总,直接转人工话术
+        if execution.interrupted:
+            reason = (
+                "单任务 token 预算耗尽"
+                if token_budget is not None and token_budget.exceeded
+                else f"整任务超时(上限 {self._deadline_seconds} 秒)"
+            )
+            item = self._escalate(user_id, reason, evidence or query, escalations, emit)
+            suffix = f"(工单号 {item.id})" if item is not None else ""
+            answer = (
+                "非常抱歉,您的问题处理耗时超出预期,已为您转接人工客服跟进"
+                f"{suffix},会尽快与您联系。"
+            )
+            return SupervisorResult(
+                final_answer=answer,
+                plan=execution.plan or plan,
+                step_results=execution.results,
+                replanned=execution.replanned,
+                escalations=escalations,
+                interrupted=True,
+            )
+
+        # 兜底升级入口 B-①:重规划耗尽后仍有失败 → 转人工,汇总时如实告知
+        if execution.unresolved_failures:
+            failed = ";".join(
+                f"step-{r.step.id} {r.step.description}" for r in execution.unresolved_failures
+            )
+            item = self._escalate(user_id, f"自动处理未完成:{failed}", evidence, escalations, emit)
+            if item is not None:
+                evidence += (
+                    f"\n(系统提示:上述失败部分已自动转人工跟进,工单号 {item.id},"
+                    "24 小时内联系用户——请在答复中如实告知)"
+                )
 
         # ③ 汇总 → ④ 质检回炉(≤ critic_max_retries 次)
-        evidence = _render_evidence(execution.results)
         answer = self._synthesize(query, evidence)
+        emit("synthesize", chars=len(answer))
         critiques: list[Critique] = []
         resynthesized = False
         if self._critic is not None:
             critique = self._critic.review(query, answer, evidence)
             critiques.append(critique)
+            emit("critic", round=1, passed=critique.passed, issues=critique.issues)
             retries = 0
             while not critique.passed and retries < self._critic_max_retries:
                 retries += 1
@@ -178,7 +284,16 @@ class Supervisor:
                 answer = self._synthesize(query, evidence, issues=critique.issues)
                 critique = self._critic.review(query, answer, evidence)
                 critiques.append(critique)
-            # 二审仍不合格:放行但留痕(critiques 里可见),阶段六 metrics 的素材
+                emit("critic", round=retries + 1, passed=critique.passed, issues=critique.issues)
+            # 二审仍不合格:放行留痕 + 兜底升级入口 B-②(人工复核答复)
+            if not critique.passed:
+                self._escalate(
+                    user_id,
+                    "质检二审仍不合格,答复已放行,需人工复核",
+                    f"【答复】{answer}\n【质检意见】{'; '.join(critique.issues)}",
+                    escalations,
+                    emit,
+                )
 
         return SupervisorResult(
             final_answer=answer,
@@ -187,11 +302,28 @@ class Supervisor:
             replanned=execution.replanned,
             critiques=critiques,
             resynthesized=resynthesized,
+            escalations=escalations,
         )
 
     # ------------------------------------------------------------------ #
     # 内部                                                                  #
     # ------------------------------------------------------------------ #
+
+    def _escalate(
+        self,
+        user_id: str,
+        reason: str,
+        context: str,
+        escalations: list[HandoffItem],
+        emit: Callable[..., None],
+    ) -> HandoffItem | None:
+        """提交一张兜底升级单(未配队列返回 None,只发轨迹事件)。"""
+        emit("escalation", reason=reason)
+        if self._handoff is None:
+            return None
+        item = self._handoff.submit_escalation(user_id=user_id, reason=reason, context=context)
+        escalations.append(item)
+        return item
 
     def _synthesize(self, query: str, evidence: str, *, issues: list[str] | None = None) -> str:
         """汇总调用(回炉时带质检意见重写)。失败降级为无 LLM 的结果拼接,永不炸。"""

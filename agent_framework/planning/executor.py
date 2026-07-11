@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol
 
@@ -109,11 +110,17 @@ class ExecutionResult:
         results: 全部步骤结果,按实际执行顺序(含失败步与重规划后的新步)。
         replanned: 是否发生过重规划。
         plan: 最终生效的计划(未重规划时即原计划)。
+        interrupted: 是否被 ``stop_when`` 提前刹停(整任务超时/预算耗尽,
+            阶段六第④层保险);剩余步骤未执行。
+        unresolved_failures: **未被重规划兜住**的失败步骤(触发过重规划的失败
+            视为已处理)——阶段六兜底升级(转人工)的判断依据。
     """
 
     results: list[StepResult] = field(default_factory=list)
     replanned: bool = False
     plan: Plan | None = None
+    interrupted: bool = False
+    unresolved_failures: list[StepResult] = field(default_factory=list)
 
 
 # --------------------------------------------------------------------------- #
@@ -148,7 +155,13 @@ class PlanExecutor:
         self._specialists = specialists
         self._max_replans = max_replans
 
-    def execute(self, plan: Plan, *, notes: ScratchPad | None = None) -> ExecutionResult:
+    def execute(
+        self,
+        plan: Plan,
+        *,
+        notes: ScratchPad | None = None,
+        stop_when: Callable[[], bool] | None = None,
+    ) -> ExecutionResult:
         """执行整份计划。
 
         每步:黑板渲染进 context → runner 执行 → 结论回填黑板(失败也回填,
@@ -159,17 +172,26 @@ class PlanExecutor:
         Args:
             plan: 待执行计划。
             notes: 共享黑板;缺省新建(Supervisor 传入以便最终汇总时复用)。
+            stop_when: 每步执行前检查的刹车条件(阶段六第④层保险:整任务超时/
+                token 预算耗尽);触发即中断,剩余步骤不再执行,
+                ``ExecutionResult.interrupted=True``。
 
         Returns:
-            :class:`ExecutionResult`(全步骤结果 + 是否重规划 + 最终计划)。
+            :class:`ExecutionResult`(全步骤结果 + 是否重规划 + 最终计划 +
+            中断标志 + 未兜住的失败)。
         """
         notes = notes if notes is not None else ScratchPad()
         results: list[StepResult] = []
+        unresolved: list[StepResult] = []
         replans_used = 0
+        interrupted = False
         current_plan = plan
         pending = deque(plan.steps)
 
         while pending:
+            if stop_when is not None and stop_when():
+                interrupted = True
+                break
             step = pending.popleft()
             result = self._run_one(step, notes.render())
             results.append(result)
@@ -179,7 +201,8 @@ class PlanExecutor:
             if result.ok:
                 continue
             if self._replanner is None or replans_used >= self._max_replans:
-                continue  # 预算耗尽/未配重规划:失败如实留在结果里,继续剩余步骤
+                unresolved.append(result)  # 没有重规划兜底的失败 → 转人工的判断依据
+                continue
 
             replans_used += 1
             completed = [r for r in results if r.ok]
@@ -192,7 +215,13 @@ class PlanExecutor:
             )
             pending = deque(current_plan.steps)  # 剩余步骤整体替换为新计划
 
-        return ExecutionResult(results=results, replanned=replans_used > 0, plan=current_plan)
+        return ExecutionResult(
+            results=results,
+            replanned=replans_used > 0,
+            plan=current_plan,
+            interrupted=interrupted,
+            unresolved_failures=unresolved,
+        )
 
     def _run_one(self, step: PlanStep, context: str) -> StepResult:
         """跑一步;runner 抛异常折叠为失败结果(执行器永不炸)。"""
