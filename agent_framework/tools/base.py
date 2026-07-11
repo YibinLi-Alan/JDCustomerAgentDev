@@ -133,8 +133,20 @@ class BaseTool(ABC):
     timeout: float | None = None
     permission: Permission = "low"
 
+    @property
+    def _idempotency_cache(self) -> dict[str, ToolResult]:
+        """幂等缓存(request_id → 首次成功结果)。惰性挂在**实例**上——
+        BaseTool 不强制子类调 ``super().__init__()``,不能用类属性(会跨实例共享)。"""
+        cache = getattr(self, "_idem_cache", None)
+        if cache is None:
+            cache = {}
+            self._idem_cache: dict[str, ToolResult] = cache
+        return cache
+
     # ------------------------------ 公开入口 ------------------------------ #
-    def invoke(self, args: dict[str, object] | None = None) -> ToolResult:
+    def invoke(
+        self, args: dict[str, object] | None = None, *, request_id: str | None = None
+    ) -> ToolResult:
         """标准执行管线:校验 → 限时执行 → 标准化,失败折叠为 ``ok=False``。
 
         这是**模型驱动路径**的唯一入口(Agent 循环 / ``ToolRegistry.invoke``
@@ -142,10 +154,19 @@ class BaseTool(ABC):
 
         Args:
             args: 模型生成的参数字典(对应 JSON 里的 arguments);``None`` 当空 dict。
+            request_id: 幂等请求 ID(阶段六可靠性):同一 ID 重复调用直接返回
+                首次的**成功**结果,不重复执行——使「审批通过后执行挂起动作」
+                这类可能被重放的路径可以放心重试。ID 由**框架**生成
+                (HITL 队列等),不进模型可见的 Schema,不靠模型传参。
+                失败结果不缓存(失败后允许换参重试)。缓存在工具实例内存中,
+                进程重启即清(与 mock 数据同生命周期;生产应落外部存储)。
 
         Returns:
             标准化的 :class:`ToolResult`。
         """
+        if request_id is not None and request_id in self._idempotency_cache:
+            return self._idempotency_cache[request_id]
+
         try:
             validated = self._validate(args or {})
         except ToolValidationError as e:
@@ -158,7 +179,10 @@ class BaseTool(ABC):
         except Exception as e:  # noqa: BLE001 - 工具任何业务异常都折叠喂回,循环不崩
             return ToolResult(ok=False, error=f"{type(e).__name__}: {e}")
 
-        return ToolResult(ok=True, content=self._format_output(output), data=output)
+        result = ToolResult(ok=True, content=self._format_output(output), data=output)
+        if request_id is not None:
+            self._idempotency_cache[request_id] = result
+        return result
 
     def run(self, **kwargs: object) -> str:
         """兼容阶段二 :class:`Tool` 协议的薄适配:``invoke`` 后取 Observation 文本。

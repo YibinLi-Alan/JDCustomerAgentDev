@@ -80,6 +80,18 @@ class Settings(BaseSettings):
     critic_max_retries: int = 1
     supervisor_specialist_max_steps: int = 5
 
+    # —— 阶段六 生产化(见 stage-6-design.md §10)——
+    llm_max_retries: int = 3  # LLM 传输层重试(指数退避+抖动;只重试可重试错误)
+    llm_timeout_seconds: float = 60.0  # LLM 单次调用超时(超时四层保险之②)
+    fallback_provider: str | None = None  # 备用 provider(空=不降级)
+    task_deadline_seconds: float = 300.0  # 整任务总超时(第④层保险;超时转人工)
+    approval_required_permissions: list[str] = ["high"]  # 审批闸门规则(配置驱动)
+    rate_limit_per_minute: int = 20  # 每 user_id 每分钟请求数(进程内,生产需外置)
+    task_token_budget: int = 50_000  # 单任务 token 预算(超限终止转人工)
+    max_input_chars: int = 4_000  # 用户输入长度上限
+    trace_dir: str = "data/traces"  # Trace JSONL 落盘目录(gitignore)
+    handoff_store_path: str = "data/handoff_queue.json"  # 人工介入队列落盘
+
 
 def get_settings() -> Settings:
     """读取并返回一份配置实例。

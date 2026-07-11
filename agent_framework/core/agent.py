@@ -24,7 +24,7 @@ stage-2-design.md 与 stage-3-design.md。
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -410,6 +410,7 @@ class ToolCallingAgent:
         *,
         max_steps: int = 5,
         system_prompt: str | None = None,
+        on_event: Callable[[str, dict[str, object]], None] | None = None,
     ) -> None:
         """构造一个原生 Function Calling Agent。
 
@@ -421,11 +422,25 @@ class ToolCallingAgent:
                 撞上限触发强制作答。默认 5。
             system_prompt: 自定义 system prompt;留空用默认京东客服提示词
                 (工具清单由协议层下发,无需写进提示词)。
+            on_event: 可观测钩子(阶段六唯一的 core 改动):循环在
+                ``llm_call`` / ``tool_call`` / ``tool_result`` / ``final_answer``
+                四个点位回调 ``(kind, payload)``。**只读不改流程**;缺省 None
+                零行为变化;回调抛异常被吞掉,观测永不拖垮主循环。
         """
         self._llm = llm
         self._registry = registry
         self._max_steps = max_steps
         self._system_prompt = system_prompt or DEFAULT_TOOL_CALLING_SYSTEM_PROMPT
+        self._on_event = on_event
+
+    def _emit(self, kind: str, payload: dict[str, object]) -> None:
+        """触发观测钩子;回调的任何异常都不允许影响主循环。"""
+        if self._on_event is None:
+            return
+        try:
+            self._on_event(kind, payload)
+        except Exception:  # noqa: BLE001 — 观测是旁路,绝不拖垮主循环
+            pass
 
     @property
     def max_steps(self) -> int:
@@ -459,12 +474,22 @@ class ToolCallingAgent:
         steps: list[StepTrace] = []
         schemas = self._registry.to_schemas()
 
-        for _step_no in range(1, self._max_steps + 1):
+        for step_no in range(1, self._max_steps + 1):
             resp = self._llm.chat(context, system=self._system_prompt, tools=schemas)
+            self._emit(
+                "llm_call",
+                {
+                    "step": step_no,
+                    "input_tokens": resp.usage.input_tokens,
+                    "output_tokens": resp.usage.output_tokens,
+                    "tool_calls": len(resp.tool_calls),
+                },
+            )
 
             if not resp.tool_calls:
                 # 模型直接作答 → 收尾
                 steps.append(StepTrace(final_answer=resp.content))
+                self._emit("final_answer", {"stopped_reason": "final_answer", "step": step_no})
                 return AgentResult(
                     final_answer=resp.content,
                     steps=steps,
@@ -474,7 +499,13 @@ class ToolCallingAgent:
             # 模型要求调工具(可能一步多个):先原样记下 assistant 消息,再逐个执行回传
             context.append(Message("assistant", resp.content, tool_calls=tuple(resp.tool_calls)))
             for call in resp.tool_calls:
-                observation = self._registry.invoke(call.name, call.args).to_observation()
+                self._emit("tool_call", {"step": step_no, "tool": call.name, "args": call.args})
+                result = self._registry.invoke(call.name, call.args)
+                observation = result.to_observation()
+                self._emit(
+                    "tool_result",
+                    {"step": step_no, "tool": call.name, "ok": result.ok},
+                )
                 context.append(Message("tool", observation, tool_call_id=call.id))
                 steps.append(
                     StepTrace(
@@ -492,5 +523,15 @@ class ToolCallingAgent:
                 "不要再调用工具。",
             )
         )
-        final = self._llm.chat(context, system=self._system_prompt).content
-        return AgentResult(final_answer=final, steps=steps, stopped_reason="max_steps")
+        resp = self._llm.chat(context, system=self._system_prompt)
+        self._emit(
+            "llm_call",
+            {
+                "step": self._max_steps + 1,
+                "input_tokens": resp.usage.input_tokens,
+                "output_tokens": resp.usage.output_tokens,
+                "tool_calls": 0,
+            },
+        )
+        self._emit("final_answer", {"stopped_reason": "max_steps", "step": self._max_steps + 1})
+        return AgentResult(final_answer=resp.content, steps=steps, stopped_reason="max_steps")

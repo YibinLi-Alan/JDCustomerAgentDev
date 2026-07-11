@@ -123,7 +123,10 @@ class ClaudeLLM:
 
         if not settings.anthropic_api_key:
             raise ValueError("使用 Claude 需在 .env 配置 ANTHROPIC_API_KEY。")
-        self._client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+        # 超时四层保险之②:LLM 单次调用超时(①工具超时 ③步数上限 ④整任务 deadline)
+        self._client = anthropic.Anthropic(
+            api_key=settings.anthropic_api_key, timeout=settings.llm_timeout_seconds
+        )
         self.model = settings.model or DEFAULT_MODEL
         self._max_tokens = settings.max_tokens
         self._temperature = settings.temperature

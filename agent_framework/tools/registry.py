@@ -121,7 +121,13 @@ class ToolRegistry:
         return len(self._tools)
 
     # ------------------------------ 运行时接口 ------------------------------ #
-    def invoke(self, name: str, args: dict[str, object] | None = None) -> ToolResult:
+    def invoke(
+        self,
+        name: str,
+        args: dict[str, object] | None = None,
+        *,
+        request_id: str | None = None,
+    ) -> ToolResult:
         """模型驱动的统一调用入口:未知工具与执行失败都折叠为 ``ok=False``。
 
         与 :meth:`BaseTool.invoke` 同构,Agent 循环只需要这一个方法。
@@ -129,6 +135,8 @@ class ToolRegistry:
         Args:
             name: 模型指定的工具名。
             args: 模型生成的参数字典。
+            request_id: 幂等请求 ID,透传给 :meth:`BaseTool.invoke`
+                (框架生成,HITL 审批执行等可重放路径用;模型路径不传)。
 
         Returns:
             标准化的 :class:`ToolResult`,**永不抛异常**。
@@ -136,7 +144,7 @@ class ToolRegistry:
         tool = self._tools.get(name)
         if tool is None:
             return ToolResult(ok=False, error=f"工具 {name!r} 不存在。可用工具:{self.names}")
-        return tool.invoke(args)
+        return tool.invoke(args, request_id=request_id)
 
     # ------------------------------ 对接 LLM ------------------------------ #
     def to_schemas(self) -> list[dict[str, object]]:

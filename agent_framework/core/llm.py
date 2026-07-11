@@ -134,22 +134,42 @@ class LLM(Protocol):
 
 
 def create_llm(settings: Settings) -> LLM:
-    """按 ``settings.provider`` 构造具体 LLM 实现。
+    """按 ``settings.provider`` 构造具体 LLM 实现,并套上可靠性包装(阶段六)。
 
     这是框架唯一的「装配点」:上层(CLI / 实验 / 未来的 Agent)只调用本函数拿到
     一个 ``LLM``,不关心背后是哪家厂商。具体 provider 的 SDK 在此**延迟导入**,
     因此只用其中一家的用户无需安装另一家的 SDK。
 
+    装配结构(自内向外):裸 provider → ``ReliableLLM``(指数退避重试)→
+    若配置了 ``fallback_provider`` 再套 ``FallbackLLM``(主挂切备)。
+    上层拿到的永远是同一个 ``LLM`` 接口,可靠性对其不可见。
+
     Args:
         settings: 框架配置;``provider`` 决定厂商,其余字段注入具体实现。
 
     Returns:
-        满足 :class:`LLM` 接口的具体实现实例。
+        满足 :class:`LLM` 接口的实例(已带重试;可能带降级)。
 
     Raises:
         ValueError: ``provider`` 不在支持列表内。
     """
-    provider = settings.provider.lower()
+    from agent_framework.core.llm_reliable import FallbackLLM, ReliableLLM
+
+    primary: LLM = ReliableLLM(
+        _create_provider(settings, settings.provider), max_retries=settings.llm_max_retries
+    )
+    if settings.fallback_provider:
+        secondary: LLM = ReliableLLM(
+            _create_provider(settings, settings.fallback_provider),
+            max_retries=settings.llm_max_retries,
+        )
+        return FallbackLLM(primary, secondary)
+    return primary
+
+
+def _create_provider(settings: Settings, provider_name: str) -> LLM:
+    """构造某一家厂商的裸实现(SDK 延迟导入;可靠性包装在 ``create_llm`` 统一加)。"""
+    provider = provider_name.lower()
     if provider in ("claude", "anthropic"):
         from agent_framework.core.llm_claude import ClaudeLLM
 
@@ -158,4 +178,4 @@ def create_llm(settings: Settings) -> LLM:
         from agent_framework.core.llm_openai import OpenAILLM
 
         return OpenAILLM(settings)
-    raise ValueError(f"未知的 LLM provider:{settings.provider!r}。当前支持:claude / openai。")
+    raise ValueError(f"未知的 LLM provider:{provider_name!r}。当前支持:claude / openai。")
