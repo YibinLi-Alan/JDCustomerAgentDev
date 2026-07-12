@@ -174,6 +174,34 @@ curl -X POST localhost:8000/approvals/<id>/approve \
 | 人工队列 | JSON 文件 | 数据库 / 工单系统 |
 | 可观测 | JSONL + 终端 viewer | Langfuse / Phoenix(给 Tracer 加 listener) |
 
+### 外接数据存储设计(生产接入建议)
+
+框架里有**四类数据、四种最合适的存储**——不是一刀切,按数据形状选型:
+
+| 数据 | 形状 | 推荐存储 | 理由 |
+|---|---|---|---|
+| **业务数据**(订单/物流/商品/退款/工单) | 强结构、有外键、需事务 | **关系型(PostgreSQL)** | 订单↔物流↔退款有外键;退款要"改订单状态+插退款记录"原子完成;"用户 X 的所有订单"是关系查询 |
+| **长期记忆**(用户事实) | 向量、语义相似度检索 | **pgvector**(Postgres 扩展)或专用向量库 | 关系库不擅长向量检索;pgvector 可与业务数据**同库**,运维简单;规模大再上 Milvus |
+| **人工审批队列**(HandoffQueue) | 状态机 + 需审计留痕 | **关系型(一张表)** | pending→approved→executed 状态流转 + 审计,关系表最合适 |
+| **执行轨迹**(Trace) | 追加型、高频、几乎不改 | **JSONL / 日志流 / ClickHouse** | 追加日志用关系库反而重;保持文件/可观测平台 |
+
+**推荐方案:PostgreSQL + pgvector 一库通吃**——业务数据(关系表)+ 审批队列(一张表)+
+长期记忆(pgvector 向量列),Trace 保持文件/日志流。业务数据表结构直接对应现有 dataclass:
+
+```sql
+orders(order_id PK, user_id FK, item, amount, status, placed_at, carrier, tracking_no, signed_at)
+products(product_id PK, name, price, stock, warranty)
+refunds(refund_id PK, order_id FK, reason, status, created_at)
+tickets(ticket_id PK, order_id FK, summary, status, created_at)
+memories(id PK, user_id, text, importance, embedding VECTOR, created_at, last_accessed_at)  -- pgvector
+handoff_queue(id PK, kind, user_id, status, action_json, context, resolution, created_at)
+```
+
+> 接入路径:**长期记忆**已有 `VectorStore` Protocol,加一个 `PgVectorStore` 即可,核心零改;
+> **审批队列**换 `HandoffQueue` 的 `_save/_load` 两个方法;**业务数据**需先把 `JDMockStore`
+> 抽象成仓储接口(`get_order(id)` / `create_refund(...)`),再写 `JDPostgresStore` 实现它——
+> 这是接生产数据库前要补的第一步(当前工具直接访问 `store.orders` dict,尚未 Protocol 化)。
+
 ---
 
 ## ✅ 测试与质量
@@ -247,12 +275,3 @@ LangChain(工具/记忆)· OpenAI Swarm(handoff/context_variables)· Generative 
 MemGPT(上下文分区)· Mem0(增删改写入)· LangGraph / AutoGen / MetaGPT / Reflexion(多 Agent 编排)·
 Chip Huyen / Eugene Yan / OWASP LLM / Judging LLM-as-a-Judge(生产化)。详见 `docs/设计论文.md`
 与知识库对比阅读笔记。
-
----
-
-## 📌 说明
-
-- 仓库:https://github.com/YibinLi-Alan/JDCustomerAgentDev
-- 这是学习性质的实习项目,准则是**功能完整 > 工业级打磨**——大纲要求的每一项都真实存在、能跑、
-  能演示;评测报告如实记录局限,不假装无懈可击。
-- `AgentKnowledge/`(Obsidian 知识库)、`data/`(运行时数据)、`.env`(密钥)均不进版本库。
