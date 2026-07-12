@@ -64,6 +64,23 @@ def create_app(service: AgentService | None = None) -> FastAPI:
         service = AgentService(llm, default_registry(), settings)
     app.state.service = service
 
+    @app.get("/")
+    def index() -> dict[str, object]:
+        """根路由:服务信息 + 可用接口一览(浏览器打开根路径不再是 404)。"""
+        return {
+            "service": "JD 客服 Agent 框架",
+            "version": "0.6.0",
+            "docs": "/docs",  # 交互式 API 文档(FastAPI 自动生成)
+            "endpoints": {
+                "GET /health": "存活探针",
+                "POST /chat": "一问一答(非流式)",
+                "POST /chat/stream": "SSE 流式(中间步骤 + 最终答复)",
+                "GET /approvals": "列出人工介入单(?status=pending)",
+                "POST /approvals/{id}/approve": "放行审批单(真正执行挂起动作)",
+                "POST /approvals/{id}/reject": "驳回审批单",
+            },
+        }
+
     @app.get("/health")
     def health() -> dict[str, str]:
         """存活探针。"""

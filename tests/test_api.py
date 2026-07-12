@@ -35,6 +35,14 @@ def test_health() -> None:
     assert client.get("/health").json() == {"status": "ok"}
 
 
+def test_index_lists_endpoints() -> None:
+    resp = _client(MockLLM([])).get("/")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["docs"] == "/docs"
+    assert "POST /chat" in body["endpoints"]
+
+
 def test_chat_direct() -> None:
     client = _client(MockLLM(['{"target":"direct","reason":"寒暄"}', "您好,很高兴为您服务!"]))
     resp = client.post("/chat", json={"user_id": "u1", "message": "你好"})
